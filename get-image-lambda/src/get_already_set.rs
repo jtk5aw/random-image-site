@@ -41,6 +41,7 @@ impl From<String> for GetAlreadySetObjectError {
 }
 
 pub async fn get_already_set_object(
+    bucket_name: &str,
     table_name: &str,
     table_primary_key: &str,
     date_string: &str,
@@ -71,6 +72,7 @@ pub async fn get_already_set_object(
 
     s3_client
         .get_object()
+        .bucket(bucket_name)
         .key(object_key.to_owned())
         .send()
         .await

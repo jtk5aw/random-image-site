@@ -71,6 +71,7 @@ pub async fn select_and_set_random_s3_object(
 
     s3_client
         .get_object()
+        .bucket(bucket_name)
         .key(random_selected_object_key)
         .send()
         .await

@@ -1,40 +1,16 @@
+use http::Method;
 use serde::{Serialize, Deserialize};
 use log::{LevelFilter, info, error};
 use chrono::Local;
 use simple_logger::SimpleLogger;
+use http::header::HeaderMap;
 
 use lambda_runtime::handler_fn;
+use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
+use aws_lambda_events::encodings::Body;
 
 use get_image_lambda::get_already_set::get_already_set_object;
 use get_image_lambda::select_and_set::select_and_set_random_s3_object;
-
-#[derive(Deserialize)]
-struct Request {
-    pub body: String,
-}
-
-#[derive(Debug, Serialize)]
-struct SuccessResponse {
-    pub body: String,
-}
-
-#[derive(Debug, Serialize)]
-struct FailureResponse {
-    pub body: String,
-}
-
-// Implement Display for the Failure response so that we can then implement Error.
-impl std::fmt::Display for FailureResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.body)
-    }
-}
-
-// Implement Error for the FailureResponse so that we can `?` (try) the Response
-// returned by `lambda_runtime::run(func).await` in `fn main`.
-impl std::error::Error for FailureResponse {}
-
-type Response = Result<SuccessResponse, FailureResponse>;
 
 #[tokio::main]
 async fn main() -> Result<(), lambda_runtime::Error> {
@@ -50,17 +26,14 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     Ok(())
 }
 
-async fn handler(req: Request, _ctx: lambda_runtime::Context) -> Response {
-    // TODO: Change this to take all the pictures in the provided s3 bucket and pick a 
-    // randome one. Write to DynamoDB with some key (CURRENT_DAY) and then link the s3 key
+async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
+    info!("handling a request: {:?}", req);
 
-    info!("handling a request...");
-    let bucket_name = std::env::var("BUCKET_NAME")
-        .expect("A BUCKET_NAME must be set in this app's Lambda environment variables.");
-    let table_name = std::env::var("TABLE_NAME")
-        .expect("A TABLE_NAME must be set in this app's Lambda environment variables.");
-    let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
-        .expect("A TABLE_PRIMARY_KEY must be set in this app's Lambda environment varialbes.");
+    if req.http_method != Method::GET {
+        panic!("Only handle GET requests should not receive any other request type");
+    }
+
+    let environment_variables = EnvironmentVariables::build();
 
     // No extra configuration is needed as long as your Lambda has
     // the necessary permissions attached to its role.
@@ -75,38 +48,79 @@ async fn handler(req: Request, _ctx: lambda_runtime::Context) -> Response {
 
     info!("Today is {}", today_as_string);
 
-    let set_object = match get_already_set_object(&table_name, &table_primary_key, &today_as_string, &dynamodb_client, &s3_client)
-        .await {
-            Ok(output) => output,
+    let set_object_result = match get_already_set_object(
+            &environment_variables.bucket_name, &environment_variables.table_name, &environment_variables.table_primary_key,
+            &today_as_string, &dynamodb_client, &s3_client
+        ).await {
+            Ok(output) => Ok(output),
             Err(err) => {
                 info!("Object is not already set for today {} for reason {:?}", today_as_string, err);
-                let random_object_output = select_and_set_random_s3_object(&bucket_name, &table_name, &table_primary_key, 
+                select_and_set_random_s3_object(&environment_variables.bucket_name, &environment_variables.table_name, &environment_variables.table_primary_key, 
                         &today_as_string, &dynamodb_client, &s3_client)
                     .await
                     .map_err(|err| {
                         error!("Failed to get a random object from the bucket due to the following: {:?}", err);
-                        FailureResponse {
-                            body: "Failed when trying to select a random object".to_owned()
+                        ApiGatewayProxyResponse {
+                            status_code: 500, 
+                            headers: HeaderMap::new(),
+                            multi_value_headers: HeaderMap::new(),
+                            body: Some(Body::Text(format!("Failed to get random object: {:?}", err))),
+                            is_base64_encoded: Some(false)
                         }
-                    })?;
-                
-                random_object_output
+                    })
             }
         };
+    
+    match set_object_result {
+        Ok(set_object) => {
+            info!("The currently set object is: {:?}", set_object);
 
-    let bytes = set_object
-        .body
-        .collect()
-        .await
-        .map_err(|err| {
-            error!("Failed to read the entire s3 objects body due to {}", err);
-            FailureResponse {
-                body: "Failed to read the selected s3 objects body".to_owned()
-            }
-        })?
-        .into_bytes();
+            Ok(set_object
+                .body
+                .collect()
+                .await
+                .map_or_else(|err| {
+                    error!("Failed to read the entire s3 objects body due to {}", err);
+                    ApiGatewayProxyResponse {
+                        status_code: 500, 
+                        headers: HeaderMap::new(),
+                        multi_value_headers: HeaderMap::new(),
+                        body: Some(Body::Text(format!("Failed to read the entire s3 objects body due to: {:?}", err))),
+                        is_base64_encoded: Some(false)
+                    }
+                }, |aggregated_bytes| {
+                    ApiGatewayProxyResponse { 
+                        status_code: 200, 
+                        headers: HeaderMap::new(), 
+                        multi_value_headers: HeaderMap::new(), 
+                        body: Some(Body::Text(base64::encode(aggregated_bytes.into_bytes()))), 
+                        is_base64_encoded: Some(true)
+                    }
+                }))
+        },
+        Err(api_gateway_response) => Ok(api_gateway_response)
+    }
+}
 
-    Ok(SuccessResponse {
-        body: base64::encode(bytes)
-    })
+struct EnvironmentVariables {
+    bucket_name: String,
+    table_name: String,
+    table_primary_key: String,
+}
+
+impl EnvironmentVariables {
+    fn build() -> EnvironmentVariables {
+        let bucket_name = std::env::var("BUCKET_NAME")
+            .expect("A BUCKET_NAME must be set in this app's Lambda environment variables.");
+        let table_name = std::env::var("TABLE_NAME")
+            .expect("A TABLE_NAME must be set in this app's Lambda environment variables.");
+        let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
+            .expect("A TABLE_PRIMARY_KEY must be set in this app's Lambda environment varialbes.");
+
+        EnvironmentVariables { 
+            bucket_name, 
+            table_name, 
+            table_primary_key 
+        }
+    }
 }
