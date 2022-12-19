@@ -3,6 +3,9 @@
 *.d.ts
 */node_modules
 
+# local README (I'm concerned about putting the api to hit in plaintext so I'm not pushing it for now)
+README_LOCAL.md
+
 # Rust Target folder
 */target
 
