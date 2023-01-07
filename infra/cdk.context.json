@@ -1,0 +1,10 @@
+{
+  "hosted-zone:account=961305444646:domainName=random-daily-image.com:region=us-west-1": {
+    "Id": "/hostedzone/Z09222842O3VOYP82U1QC",
+    "Name": "random-daily-image.com."
+  },
+  "hosted-zone:account=961305444646:domainName=jtken.com:region=us-west-1": {
+    "Id": "/hostedzone/Z027825633S39W470Z6LM",
+    "Name": "jtken.com."
+  }
+}
