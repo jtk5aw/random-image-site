@@ -1,9 +1,8 @@
 use http::Method;
-use serde::{Serialize, Deserialize};
 use log::{LevelFilter, info, error};
 use chrono::Local;
 use simple_logger::SimpleLogger;
-use http::header::HeaderMap;
+use http::header::{HeaderMap, HeaderValue};
 
 use lambda_runtime::handler_fn;
 use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
@@ -83,7 +82,7 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
                     error!("Failed to read the entire s3 objects body due to {}", err);
                     ApiGatewayProxyResponse {
                         status_code: 500, 
-                        headers: HeaderMap::new(),
+                        headers: create_cross_origin_headers(),
                         multi_value_headers: HeaderMap::new(),
                         body: Some(Body::Text(format!("Failed to read the entire s3 objects body due to: {:?}", err))),
                         is_base64_encoded: Some(false)
@@ -91,7 +90,7 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
                 }, |aggregated_bytes| {
                     ApiGatewayProxyResponse { 
                         status_code: 200, 
-                        headers: HeaderMap::new(), 
+                        headers: create_cross_origin_headers(), 
                         multi_value_headers: HeaderMap::new(), 
                         body: Some(Body::Text(base64::encode(aggregated_bytes.into_bytes()))), 
                         is_base64_encoded: Some(true)
@@ -100,6 +99,12 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
         },
         Err(api_gateway_response) => Ok(api_gateway_response)
     }
+}
+
+fn create_cross_origin_headers() -> HeaderMap {
+    let mut header_map = HeaderMap::new();
+    header_map.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
+    header_map
 }
 
 struct EnvironmentVariables {

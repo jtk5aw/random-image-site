@@ -70,7 +70,11 @@ export class InfraStack extends cdk.Stack {
 
     // API Gateway
     const randomImageApi = new apiGateway.RestApi(this, 'RandomImageAPI', {
-      restApiName: 'random-image-api'
+      restApiName: 'random-image-api',
+      defaultCorsPreflightOptions: {
+        allowOrigins: apiGateway.Cors.ALL_ORIGINS,
+        allowMethods: apiGateway.Cors.ALL_METHODS,
+      }
     });
 
     const todaysImage = randomImageApi.root.addResource('todays-image');
