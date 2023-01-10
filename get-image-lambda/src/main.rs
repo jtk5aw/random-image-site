@@ -59,13 +59,11 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
                     .await
                     .map_err(|err| {
                         error!("Failed to get a random object from the bucket due to the following: {:?}", err);
-                        ApiGatewayProxyResponse {
+                        ApiGatewayProxyResponseWithoutHeaders {
                             status_code: 500, 
-                            headers: HeaderMap::new(),
-                            multi_value_headers: HeaderMap::new(),
-                            body: Some(Body::Text(format!("Failed to get random object: {:?}", err))),
-                            is_base64_encoded: Some(false)
-                        }
+                            body: Body::Text(format!("Failed to get random object: {:?}", err)), 
+                            is_base_64_encoded: false
+                        }.build_full_response()
                     })
             }
         };
@@ -80,24 +78,38 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
                 .await
                 .map_or_else(|err| {
                     error!("Failed to read the entire s3 objects body due to {}", err);
-                    ApiGatewayProxyResponse {
+                    ApiGatewayProxyResponseWithoutHeaders {
                         status_code: 500, 
-                        headers: create_cross_origin_headers(),
-                        multi_value_headers: HeaderMap::new(),
-                        body: Some(Body::Text(format!("Failed to read the entire s3 objects body due to: {:?}", err))),
-                        is_base64_encoded: Some(false)
-                    }
+                        body: Body::Text(format!("Failed to read the entire s3 objects body due to: {:?}", err)), 
+                        is_base_64_encoded: false
+                    }.build_full_response()
                 }, |aggregated_bytes| {
-                    ApiGatewayProxyResponse { 
+                    ApiGatewayProxyResponseWithoutHeaders {
                         status_code: 200, 
-                        headers: create_cross_origin_headers(), 
-                        multi_value_headers: HeaderMap::new(), 
-                        body: Some(Body::Text(base64::encode(aggregated_bytes.into_bytes()))), 
-                        is_base64_encoded: Some(true)
-                    }
+                        body: Body::Text(base64::encode(aggregated_bytes.into_bytes())), 
+                        is_base_64_encoded: true
+                    }.build_full_response()
                 }))
         },
         Err(api_gateway_response) => Ok(api_gateway_response)
+    }
+}
+
+struct ApiGatewayProxyResponseWithoutHeaders {
+    status_code: i64,
+    body: Body,
+    is_base_64_encoded: bool
+}
+
+impl ApiGatewayProxyResponseWithoutHeaders {
+    fn build_full_response(self) -> ApiGatewayProxyResponse {
+        ApiGatewayProxyResponse { 
+            status_code: self.status_code, 
+            headers: create_cross_origin_headers(), 
+            multi_value_headers: HeaderMap::new(), 
+            body: Some(self.body), 
+            is_base64_encoded: Some(self.is_base_64_encoded)
+        }
     }
 }
 
