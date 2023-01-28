@@ -2,11 +2,12 @@ use http::Method;
 use log::{LevelFilter, info, error};
 use chrono::Local;
 use simple_logger::SimpleLogger;
-use http::header::{HeaderMap, HeaderValue};
 
 use lambda_runtime::handler_fn;
 use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_lambda_events::encodings::Body;
+
+use lambda_utils::{ApiGatewayProxyResponseWithoutHeaders};
 
 use get_image_lambda::get_already_set::get_already_set_object;
 use get_image_lambda::select_and_set::select_and_set_random_s3_object;
@@ -93,30 +94,6 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
         },
         Err(api_gateway_response) => Ok(api_gateway_response)
     }
-}
-
-struct ApiGatewayProxyResponseWithoutHeaders {
-    status_code: i64,
-    body: Body,
-    is_base_64_encoded: bool
-}
-
-impl ApiGatewayProxyResponseWithoutHeaders {
-    fn build_full_response(self) -> ApiGatewayProxyResponse {
-        ApiGatewayProxyResponse { 
-            status_code: self.status_code, 
-            headers: create_cross_origin_headers(), 
-            multi_value_headers: HeaderMap::new(), 
-            body: Some(self.body), 
-            is_base64_encoded: Some(self.is_base_64_encoded)
-        }
-    }
-}
-
-fn create_cross_origin_headers() -> HeaderMap {
-    let mut header_map = HeaderMap::new();
-    header_map.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
-    header_map
 }
 
 struct EnvironmentVariables {
