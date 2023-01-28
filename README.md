@@ -14,5 +14,4 @@ At first both people would see two different images but on refresh it would beco
 later, designed for one person only so not a big deal. 
 
 ### How is the image selection random? 
-All the objects in the S3 bucket are listed and then one of them is chosen at random. There are plans to make this work in such a way that the same image
-can't be chosen for N days after it was already chosen but this hasn't been done yet. 
+All the objects in the S3 bucket are listed and then one of them is chosen at random. However, it will not allow the same image to be picked twice in a five day period. There will never be repeats that close together.  
