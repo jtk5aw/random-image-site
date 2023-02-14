@@ -66,7 +66,26 @@ export class InfraStack extends cdk.Stack {
     handler.addToRolePolicy(new PolicyStatement({
       actions:['dynamodb:*'],
       resources: ['*'],
-    }))
+    }));
+
+    const getOrSetReactionHandler = new lambda.Function(this, 'GetOrSetReactionLambda', {
+      functionName: 'GetOrSetReactionLambda',
+      code: lambda.Code.fromAsset(
+        '..\\get-or-set-reaction-lambda\\target\\x86_64-unknown-linux-musl\\release\\lambda'
+      ),
+      runtime: lambda.Runtime.PROVIDED_AL2,
+      handler: 'not.required',
+      environment: {
+        RUST_BACKTRACE: '1',
+        TABLE_NAME: table_name,
+        TABLE_PRIMARY_KEY: table_primary_key,
+      }
+    });
+
+    handler.addToRolePolicy(new PolicyStatement({
+      actions:['dynamodb:*'],
+      resources: ['*'],
+    }));
 
     // API Gateway
     const randomImageApi = new apiGateway.RestApi(this, 'RandomImageAPI', {
@@ -79,6 +98,10 @@ export class InfraStack extends cdk.Stack {
 
     const todaysImage = randomImageApi.root.addResource('todays-image');
     todaysImage.addMethod('GET', new apiGateway.LambdaIntegration(handler));
+
+    const todaysReaction = randomImageApi.root.addResource('todays-reaction');
+    todaysReaction.addMethod('GET', new apiGateway.LambdaIntegration(getOrSetReactionHandler));
+    todaysReaction.addMethod('PUT', new apiGateway.LambdaIntegration(getOrSetReactionHandler));
 
     // Frontend 
     //Get The Hosted Zone
