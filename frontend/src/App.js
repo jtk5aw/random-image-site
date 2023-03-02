@@ -34,12 +34,24 @@ function App() {
 
 const AppBody = ({props}) => (
   <div className="App-Body">
-      <img src={`data:image/jpg;base64,${props.imageString}`} className="Todays-Image" alt="todays pic" />
-      <p className="Todays-Text">
-        Here is todays specially selected image 😎
-        I hope you like this one and I hope you come back tomorrow for another one. 
-      </p>
+      {
+        props.imageString === '' ? <Loading /> : <Successful props={{ 'imageString': props.imageString }} />
+      }
   </div>
 );
+
+const Successful = ({props}) => {
+  return <div>
+    <img src={`data:image/jpg;base64,${props.imageString}`} className="Todays-Image" alt="todays pic" />
+    <p className="Todays-Text">
+      Here is todays specially selected image 😎
+      I hope you like this one and I hope you come back tomorrow for another one. 
+    </p>
+  </div>
+}
+
+const Loading = ({props}) => {
+  return <div class="lds-roller"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+}
 
 export default App;
