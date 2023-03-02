@@ -1,14 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
-import * as apiGateway from 'aws-cdk-lib/aws-apigateway';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import { constructApi } from './util';
 
 export class InfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -42,66 +40,12 @@ export class InfraStack extends cdk.Stack {
       maxCapacity: 3,
     });
 
-    // Compute
-    const handler = new lambda.Function(this, 'GetImageLambda', {
-      functionName: 'GetImageLambda',
-      code: lambda.Code.fromAsset(
-        '..\\get-image-lambda\\target\\x86_64-unknown-linux-musl\\release\\lambda'
-      ),
-      runtime: lambda.Runtime.PROVIDED_AL2,
-      handler: 'not.required',
-      environment: {
-        RUST_BACKTRACE: '1',
-        BUCKET_NAME: bucket_name,
-        TABLE_NAME: table_name,
-        TABLE_PRIMARY_KEY: table_primary_key,
-      }
+    // Create the API
+    constructApi(this, {
+      bucket_name,
+      table_name,
+      table_primary_key
     });
-
-    handler.addToRolePolicy(new PolicyStatement({
-      actions: ['s3:*'],
-      resources: ['*']
-    }));
-
-    handler.addToRolePolicy(new PolicyStatement({
-      actions:['dynamodb:*'],
-      resources: ['*'],
-    }));
-
-    const getOrSetReactionHandler = new lambda.Function(this, 'GetOrSetReactionLambda', {
-      functionName: 'GetOrSetReactionLambda',
-      code: lambda.Code.fromAsset(
-        '..\\get-or-set-reaction-lambda\\target\\x86_64-unknown-linux-musl\\release\\lambda'
-      ),
-      runtime: lambda.Runtime.PROVIDED_AL2,
-      handler: 'not.required',
-      environment: {
-        RUST_BACKTRACE: '1',
-        TABLE_NAME: table_name,
-        TABLE_PRIMARY_KEY: table_primary_key,
-      }
-    });
-
-    handler.addToRolePolicy(new PolicyStatement({
-      actions:['dynamodb:*'],
-      resources: ['*'],
-    }));
-
-    // API Gateway
-    const randomImageApi = new apiGateway.RestApi(this, 'RandomImageAPI', {
-      restApiName: 'random-image-api',
-      defaultCorsPreflightOptions: {
-        allowOrigins: apiGateway.Cors.ALL_ORIGINS,
-        allowMethods: apiGateway.Cors.ALL_METHODS,
-      }
-    });
-
-    const todaysImage = randomImageApi.root.addResource('todays-image');
-    todaysImage.addMethod('GET', new apiGateway.LambdaIntegration(handler));
-
-    const todaysReaction = randomImageApi.root.addResource('todays-reaction');
-    todaysReaction.addMethod('GET', new apiGateway.LambdaIntegration(getOrSetReactionHandler));
-    todaysReaction.addMethod('PUT', new apiGateway.LambdaIntegration(getOrSetReactionHandler));
 
     // Frontend 
     //Get The Hosted Zone
