@@ -1,23 +1,22 @@
+use aws_sdk_dynamodb::model::AttributeValue;
+use lambda_utils::{DynamoDbUtil, DynamoDbUtilError};
 use log::info;
 
 use aws_sdk_s3::error::GetObjectError;
 use aws_sdk_s3::types::{SdkError as S3SdkError};
 use aws_sdk_s3::output::GetObjectOutput;
-use aws_sdk_dynamodb::model::AttributeValue;
-use aws_sdk_dynamodb::error::GetItemError;
-use aws_sdk_dynamodb::types::SdkError as DynamoDbSdkError;
 
 #[derive(Debug)]
 pub enum GetAlreadySetObjectError {
-    GetItemFailure(DynamoDbSdkError<GetItemError>),
-    AttributeValueConversionFailure(AttributeValue),
+    GetItemFromKeyError(DynamoDbUtilError),
     GetObjectFalure(S3SdkError<GetObjectError>),
+    AttributeValueConversionFailure(AttributeValue),
     LocalError(String),
 }
 
-impl From<DynamoDbSdkError<GetItemError>> for GetAlreadySetObjectError {
-    fn from(err: DynamoDbSdkError<GetItemError>) -> GetAlreadySetObjectError {
-        GetAlreadySetObjectError::GetItemFailure(err)
+impl From<DynamoDbUtilError> for GetAlreadySetObjectError {
+    fn from(err: DynamoDbUtilError) -> GetAlreadySetObjectError {
+        GetAlreadySetObjectError::GetItemFromKeyError(err)
     }
 }
 
@@ -51,16 +50,11 @@ pub async fn get_already_set_object(
 
     info!("Check for already set object for {}", date_string);
 
-    let get_item_result = dynamodb_client
-        .get_item()
-        .table_name(table_name)
-        .key(table_primary_key, AttributeValue::S(date_string.to_owned()))
-        .send()
-        .await?;
-    
-    let item = get_item_result
-        .item()
-        .ok_or("Getting set object failed".to_owned())?;
+    let item = dynamodb_client.get_item_from_key(
+        table_name,
+        table_primary_key,
+        date_string.to_owned()
+    ).await?;
 
     let object_key = item
         .get("object_key")
