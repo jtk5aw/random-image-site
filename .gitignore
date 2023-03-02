@@ -11,3 +11,4 @@ README_LOCAL.md
 # CDK asset staging directory
 */.cdk.staging
 */cdk.out
+*/infra/dist/*
