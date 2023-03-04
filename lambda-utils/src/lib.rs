@@ -52,12 +52,6 @@ impl From<DynamoDbSdkError<GetItemError>> for DynamoDbUtilError {
     }
 }
 
-impl From<AttributeValue> for DynamoDbUtilError {
-    fn from(err: AttributeValue) -> Self {
-        Self::AttributeValueConversionFailure(err)
-    }
-}
-
 impl From<String> for DynamoDbUtilError {
     fn from(err: String) -> Self {
         Self::LocalError(err)
