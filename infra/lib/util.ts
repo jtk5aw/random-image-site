@@ -50,7 +50,7 @@ export function constructApi(scope: Construct, props: ApiProps) {
         }
       });
   
-      handler.addToRolePolicy(new PolicyStatement({
+      getOrSetMetadataHandler.addToRolePolicy(new PolicyStatement({
         actions:['dynamodb:*'],
         resources: ['*'],
       }));
