@@ -1,7 +1,7 @@
 import React from 'react'
 import '../../App.css';
 
-export const SelectorEmoji = ({ icon, label, onSelect, hover }) => {
+export const SelectorEmoji = ({ icon, selected, label, onSelect }) => {
 
   const handleClick = () => {
     onSelect && onSelect(label)
@@ -12,7 +12,7 @@ export const SelectorEmoji = ({ icon, label, onSelect, hover }) => {
 
   return (
     <div className="Reaction-Wrap"> 
-      <img className="Reaction-Icon" src={icon} onClick={ handleClick } />
+      <img className={selected ? "Reaction-Icon-Selected" : "Reaction-Icon" } src={icon} onClick={ handleClick } />
     </div>
   )
 }

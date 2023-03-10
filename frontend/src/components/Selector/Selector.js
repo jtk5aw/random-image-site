@@ -5,7 +5,7 @@ import '../../App.css';
 
 import SelectorEmoji from './SelectorEmoji'
 
-export const Selector = ({ reactions, onSelect }) => {
+export const Selector = ({ reactions, currReaction, onSelect }) => {
 
   return (
     <div className="Todays-Reaction">
@@ -13,6 +13,7 @@ export const Selector = ({ reactions, onSelect }) => {
         return (
           <div className="Todays-Icons" key={ reaction }>
             <SelectorEmoji
+              selected = { reaction === currReaction }
               icon={ getIcon(reaction) }
               label={ reaction }
               onSelect={ onSelect }
