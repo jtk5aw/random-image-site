@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   justify-content: start;
-  height: 100vh;
+  height: 150vh;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -74,7 +74,7 @@
   width: 100%;
   transform-origin: center;
   cursor: pointer;
-  transition: 500ms transform cubic-bezier(0.23, 1, 0.32, 1);
+  transition: 2s transform cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .Reaction-Icon:active {
