@@ -13,6 +13,7 @@ use lambda_runtime::handler_fn;
 use aws_lambda_events::{event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse}, encodings::Body};
 use strum::ParseError;
 use strum_macros::EnumString;
+use uuid::Uuid;
 
 
 #[tokio::main]
@@ -55,9 +56,12 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
 
     let result: Result<ApiGatewayProxyResponse, HandlerError> = match req.http_method { 
         Method::GET => handler_get(
+                req,
                 &today_as_string, 
                 &environment_variables.table_name,
                 &environment_variables.table_primary_key, 
+                &environment_variables.user_reaction_table_name,
+                &environment_variables.user_reaction_table_primary_key,
                 dynamodb_client
             ).await
             .map_err( HandlerError::GetError),
@@ -66,6 +70,8 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
                 &today_as_string, 
                 &environment_variables.table_name, 
                 &environment_variables.table_primary_key,
+                &environment_variables.user_reaction_table_name,
+                &environment_variables.user_reaction_table_primary_key,
                 dynamodb_client
             ).await
             .map_err(HandlerError::PutError),
@@ -81,6 +87,13 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
                 is_base_64_encoded: false
             }.build_full_response()
         }, |ok| ok))
+}
+
+// Body of the response for both GET and PUT
+#[derive(Serialize, Deserialize, Debug)]
+struct ResponseBody {
+    uuid: String,
+    reaction: String,
 }
 
 // Reactions Enum that can be converted into strings
@@ -103,7 +116,14 @@ impl fmt::Display for Reactions {
 #[derive(Debug)]
 pub enum GetHandlerError {
     GetItemFromKeyFailure(DynamoDbUtilError),
+    SerdeToStringError(SerdeJsonError),
     LocalError(String)
+}
+
+impl From<SerdeJsonError> for GetHandlerError {
+    fn from(err: SerdeJsonError) -> Self {
+        Self::SerdeToStringError(err)
+    }
 }
 
 impl From<String> for GetHandlerError {
@@ -119,31 +139,51 @@ impl From<DynamoDbUtilError> for GetHandlerError {
 }
 
 async fn handler_get(
+    req: ApiGatewayProxyRequest,
     today_as_string: &str,
     table_name: &str,
     table_primary_key: &str,
+    user_reaction_table_name: &str,
+    user_reaction_primary_key: &str,
     dynamodb_client: DynamoDbClient
 ) -> Result<ApiGatewayProxyResponse, GetHandlerError> {
 
-    let item = dynamodb_client.get_item_from_key(
-        table_name, 
-        table_primary_key, 
-        today_as_string.to_owned()
-    ).await?;
+    let curr_uuid = req.query_string_parameters
+        .get("uuid")
+        .map_or(
+            Uuid::new_v4().to_string(),
+            |uuid| uuid.to_owned()
+        );
 
-    let reaction_string = item
-        .get("reaction")
-        .map_or(Reactions::NoReaction.to_string(), |reaction_val| {
-            reaction_val
-                .as_s()
-                .map_or(
-                    Reactions::NoReaction.to_string(), 
-                    |result| result.to_owned())
-        });
+    let get_item_from_key_result = dynamodb_client.get_item_from_key(
+            user_reaction_table_name, 
+            user_reaction_primary_key, 
+            format!("{}_{}", curr_uuid, today_as_string.to_owned())
+        ).await
+        .ok();
+        
+    let reaction_string = match get_item_from_key_result {
+        Some(dynamo_map) => dynamo_map.get("reaction")
+            .map_or(Reactions::NoReaction.to_string(), |reaction_val| {
+                reaction_val
+                    .as_s()
+                    .map_or(
+                        Reactions::NoReaction.to_string(), 
+                        |result| result.to_owned())
+            }),
+        None => Reactions::NoReaction.to_string()
+    };
+
+    let response_body = ResponseBody {
+        uuid: curr_uuid,
+        reaction: reaction_string
+    };
+
+    let response = serde_json::to_string(&response_body)?;
     
     Ok(ApiGatewayProxyResponseWithoutHeaders {
         status_code: 200,
-        body: Body::Text(reaction_string),
+        body: Body::Text(response),
         is_base_64_encoded: false
     }.build_full_response())
 }
@@ -151,6 +191,7 @@ async fn handler_get(
 // Body of the request to be recevied
 #[derive(Serialize, Deserialize, Debug)]
 struct RequestBody {
+    uuid: String,
     reaction: String,
 }
 
@@ -199,6 +240,8 @@ async fn handler_put(
     today_as_string: &str, 
     table_name: &str, 
     table_primary_key: &str,
+    user_reaction_table_name: &str,
+    user_reaction_primary_key: &str,
     dynamodb_client: DynamoDbClient
 ) -> Result<ApiGatewayProxyResponse, PutHandlerError> {
     let body_as_str = req.body.ok_or_else(|| "Body does not exist".to_owned())?;
@@ -207,12 +250,16 @@ async fn handler_put(
 
     info!("body_as_str: {}, body: {:?}", body_as_str, body);
 
+    let uuid = &body.uuid;
     let reaction = Reactions::from_str(&body.reaction)?;
 
     let update_item_result = dynamodb_client
         .update_item()
-        .table_name(table_name)
-        .key(table_primary_key, AttributeValue::S(today_as_string.to_owned()))
+        .table_name(user_reaction_table_name)
+        .key(
+            user_reaction_primary_key, 
+            AttributeValue::S(format!("{}_{}", uuid, today_as_string))
+        )
         .update_expression("SET reaction = :new_reaction")
         .expression_attribute_values(":new_reaction", AttributeValue::S(reaction.to_string()))
         .return_values(ReturnValue::AllNew)
@@ -237,6 +284,8 @@ async fn handler_put(
 struct EnvironmentVariables {
     table_name: String,
     table_primary_key: String,
+    user_reaction_table_name: String,
+    user_reaction_table_primary_key: String,
 }
 
 impl EnvironmentVariables {
@@ -245,10 +294,16 @@ impl EnvironmentVariables {
             .expect("A TABLE_NAME must be set in this app's Lambda environment variables.");
         let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
             .expect("A TABLE_PRIMARY_KEY must be setn this app's Lambda environment varialbes.");
+        let user_reaction_table_name = std::env::var("USER_REACTION_TABLE_NAME")
+            .expect("A USER_REACTION_TABLE_NAME must be provided");
+        let user_reaction_table_primary_key = std::env::var("USER_REACTION_TABLE_PRIMARY_KEY")
+            .expect("A USER_REACTION_TABLE_PRIMARY_KEY must be provided");
 
         EnvironmentVariables { 
             table_name, 
-            table_primary_key 
+            table_primary_key,
+            user_reaction_table_name,
+            user_reaction_table_primary_key
         }
     }
 }
