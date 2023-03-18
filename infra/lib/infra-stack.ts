@@ -16,6 +16,8 @@ export class InfraStack extends cdk.Stack {
     const bucket_name = 'get-image-lambda-bucket';
     const table_name = 'image-info-table';
     const table_primary_key = 'id';
+    const user_reaction_table_name = 'user-reaction-table';
+    const user_reaction_table_primary_key = 'user_date';
     const web_app_domain = 'jtken.com';
     
     // Storage resources
@@ -40,11 +42,29 @@ export class InfraStack extends cdk.Stack {
       maxCapacity: 3,
     });
 
+    const userReactionTable = new cdk.aws_dynamodb.Table(this, 'UserReactionTable', {
+      tableName: user_reaction_table_name,
+      partitionKey: { name: user_reaction_table_primary_key, type: cdk.aws_dynamodb.AttributeType.STRING },
+      billingMode: cdk.aws_dynamodb.BillingMode.PROVISIONED
+    });
+
+    userReactionTable.autoScaleReadCapacity({
+      minCapacity: 1, 
+      maxCapacity: 3,
+    });
+
+    userReactionTable.autoScaleWriteCapacity({
+      minCapacity: 1, 
+      maxCapacity: 3,
+    });
+
     // Create the API
     constructApi(this, {
       bucket_name,
       table_name,
-      table_primary_key
+      table_primary_key,
+      user_reaction_table_name,
+      user_reaction_table_primary_key
     });
 
     // Frontend 
