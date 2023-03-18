@@ -4,38 +4,72 @@ import './App.css';
 
 import axios from 'axios';
 import React, { useState, useEffect } from 'react';
+import { QueryClient, QueryClientProvider, useQuery } from 'react-query';
 import Selector from './components/Selector/Selector';
 
+const queryClient = new QueryClient();
 
-function App() {
-  const [base64ImageString, setBase64ImageString] = useState('');
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient} >
+      <Page />
+    </QueryClientProvider>
+  )
+}
+
+function Page() {
+  // Fetch the current image
+  const todaysImageResponse = useQuery({
+    queryKey: ['imageString'],
+    queryFn: () => 
+      axios.get(TODAYS_IMAGE_ENDPOINT)
+        .then((res) => res.data)
+  });
+
+  // Fetch todays metadata
+  const todaysMetadataResponse = useQuery({
+    queryKey: ['metadata'],
+    retry: false,
+    queryFn: () =>  
+      axios.get(TODAYS_METADATA_ENDPOINT, { 
+        params : { 
+          uuid: localStorage.getItem('uuid') 
+        } 
+      }).then((res) => res.data)
+  });
+
+  return <SubPage 
+          todaysImageResponse={todaysImageResponse}
+          todaysMetadataResponse={todaysMetadataResponse} />
+}
+
+const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   const [showImage, setShowImage] = useState(false);
   const [currReaction, setCurrReaction] = useState('NoReaction');
+  const [currUuid, setCurrUuid] = useState(null);
 
-  // Fetch the current image
+  // Set state and localStorage based on todays metadata
   useEffect(() => {
-    axios.get(TODAYS_IMAGE_ENDPOINT)
-    .then(res => {
-        const returnedString = res.data;
-        setBase64ImageString(returnedString);
-      })
-  }, [])
+    if (todaysMetadataResponse.isSuccess) {
+      setCurrReaction(todaysMetadataResponse.data.reaction);
+    
+      const currUuid = localStorage.getItem('uuid')
 
-  // Fetch the current metadata
-  useEffect(() => {
-    axios.get(TODAYS_METADATA_ENDPOINT)
-    .then(res => {
-      const returnedString = res.data;
-      setCurrReaction(returnedString);
-    })
-  }, [])
+      if (currUuid === null) {
+        localStorage.setItem('uuid', todaysMetadataResponse.data.uuid);
+        setCurrUuid(todaysMetadataResponse.data.uuid);
+      } else {
+        setCurrUuid(currUuid);
+      }
+    }
+  }, [todaysMetadataResponse])
 
   // Start showing the image
   const onClick = () => setShowImage(true);
 
   // On emoji press, update the reaction
-  const onEmojiClick = (reaction) => {
-    axios.put(TODAYS_METADATA_ENDPOINT, {'reaction': reaction})
+  const onEmojiClick = (uuid) => (reaction) => {
+    axios.put(TODAYS_METADATA_ENDPOINT, {'reaction': reaction, 'uuid': uuid})
     .then(res => {
       // Means the put was successful
       setCurrReaction(reaction)
@@ -52,23 +86,27 @@ function App() {
       </div>
       { showImage 
         ? <AppBody 
-            imageString={base64ImageString} 
+            todaysImageLoading={todaysImageResponse.isLoading}
+            todaysMetadataLoading={todaysMetadataResponse.isLoading}
+            imageString={todaysImageResponse.data} 
             currReaction={currReaction}
+            currUuid={currUuid}
             onEmojiClick={onEmojiClick} /> 
         : null }
     </div>
   );
 }
 
-const AppBody = ({imageString, currReaction, onEmojiClick}) => (
+const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageString, currReaction, currUuid, onEmojiClick}) => (
   <div className="App-Body">
       {
-        imageString === '' 
+        todaysImageLoading || todaysMetadataLoading
           ? <Loading /> 
           : <Successful 
               imageString={imageString}
+              currUuid={currUuid}
               currReaction={currReaction}
-              onEmojiClick={onEmojiClick} />
+              onEmojiClick={onEmojiClick(currUuid)} />
       }
   </div>
 );
@@ -87,5 +125,3 @@ const Successful = ({imageString, currReaction, onEmojiClick}) => {
 const Loading = ({props}) => {
   return <div class="lds-roller"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
 }
-
-export default App;
