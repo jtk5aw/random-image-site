@@ -9,6 +9,7 @@ interface ApiProps {
     table_primary_key: string;
     user_reaction_table_name: string;
     user_reaction_table_primary_key: string;
+    user_reaction_table_sort_key: string;
 }
 
 export function constructApi(scope: Construct, props: ApiProps) {
@@ -47,10 +48,9 @@ export function constructApi(scope: Construct, props: ApiProps) {
         handler: 'not.required',
         environment: {
           RUST_BACKTRACE: '1',
-          TABLE_NAME: props.table_name,
-          TABLE_PRIMARY_KEY: props.table_primary_key,
           USER_REACTION_TABLE_NAME: props.user_reaction_table_name,
-          USER_REACTION_TABLE_PRIMARY_KEY: props.user_reaction_table_primary_key
+          USER_REACTION_TABLE_PRIMARY_KEY: props.user_reaction_table_primary_key,
+          USER_REACTION_TABLE_SORT_KEY: props.user_reaction_table_sort_key,
         }
       });
   

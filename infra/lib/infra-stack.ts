@@ -17,7 +17,8 @@ export class InfraStack extends cdk.Stack {
     const table_name = 'image-info-table';
     const table_primary_key = 'id';
     const user_reaction_table_name = 'user-reaction-table';
-    const user_reaction_table_primary_key = 'user_date';
+    const user_reaction_table_primary_key = 'date';
+    const user_reaction_table_sort_key = 'user'
     const web_app_domain = 'jtken.com';
     
     // Storage resources
@@ -45,6 +46,7 @@ export class InfraStack extends cdk.Stack {
     const userReactionTable = new cdk.aws_dynamodb.Table(this, 'UserReactionTable', {
       tableName: user_reaction_table_name,
       partitionKey: { name: user_reaction_table_primary_key, type: cdk.aws_dynamodb.AttributeType.STRING },
+      sortKey: { name: user_reaction_table_sort_key, type: cdk.aws_dynamodb.AttributeType.STRING },
       billingMode: cdk.aws_dynamodb.BillingMode.PROVISIONED
     });
 
@@ -64,7 +66,8 @@ export class InfraStack extends cdk.Stack {
       table_name,
       table_primary_key,
       user_reaction_table_name,
-      user_reaction_table_primary_key
+      user_reaction_table_primary_key,
+      user_reaction_table_sort_key
     });
 
     // Frontend 

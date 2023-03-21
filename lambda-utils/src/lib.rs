@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use aws_sdk_dynamodb::client::fluent_builders::GetItem;
 use aws_sdk_dynamodb::{Client as DynamoDbClient, error::GetItemError, model::AttributeValue};
 use aws_sdk_dynamodb::types::SdkError as DynamoDbSdkError;
 use aws_lambda_events::{encodings::Body, event::apigw::ApiGatewayProxyResponse};
@@ -39,6 +40,11 @@ fn create_cross_origin_headers() -> HeaderMap {
 /** 
  * Util Functions for making calls to DynamoDB
  */
+pub struct KeyAndAttribute<'a> {
+    pub key: &'a str,
+    pub attribute: AttributeValue
+}
+
 #[derive(Debug)]
 pub enum DynamoDbUtilError {
     GetItemFailure(Box<DynamoDbSdkError<GetItemError>>),
@@ -66,6 +72,12 @@ pub trait DynamoDbUtil {
         table_primary_key: &str,
         key: String
     ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
+
+    async fn get_item_from_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<KeyAndAttribute<'a>>
+    ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
 }
 
 #[async_trait]
@@ -77,17 +89,44 @@ impl DynamoDbUtil for DynamoDbClient {
         key: String
     ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
 
-        let get_item_result = self
+        let get_item_request = self
             .get_item()
             .table_name(table_name)
-            .key(table_primary_key, AttributeValue::S(key))
-            .send()
-            .await?;
+            .key(table_primary_key, AttributeValue::S(key));
 
-        let item = get_item_result
-            .item()
-            .ok_or_else(|| "Getting the set object failed".to_owned())?;
+        Ok(send_request_get_item(get_item_request).await?)
+    }
 
-        Ok(item.to_owned())
+    async fn get_item_from_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<KeyAndAttribute<'a>>
+    ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
+
+        let mut get_item_request = self
+            .get_item()
+            .table_name(table_name);
+
+        for key_and_attribute in keys_and_attributes {
+            get_item_request = get_item_request.key(
+                key_and_attribute.key, key_and_attribute.attribute
+            );
+        }
+        
+        Ok(send_request_get_item(get_item_request).await?)
     }
 }
+
+async fn send_request_get_item(
+    get_item_request: GetItem
+) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
+    let get_item_result = get_item_request
+        .send()
+        .await?;
+
+    let item = get_item_result
+        .item()
+        .ok_or_else(|| "Getting the set object failed".to_owned())?;
+
+    Ok(item.to_owned())
+} 

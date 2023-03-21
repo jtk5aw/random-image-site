@@ -2,7 +2,7 @@ use std::{fmt, str::FromStr};
 
 use aws_sdk_dynamodb::{Client as DynamoDbClient, model::{AttributeValue, ReturnValue}, error::UpdateItemError, types::SdkError as DynamoDbSdkError};
 use http::Method;
-use lambda_utils::{ApiGatewayProxyResponseWithoutHeaders, DynamoDbUtil, DynamoDbUtilError};
+use lambda_utils::{ApiGatewayProxyResponseWithoutHeaders, DynamoDbUtil, DynamoDbUtilError, KeyAndAttribute};
 use log::{LevelFilter, info, error};
 use chrono::Local;
 use serde::{Serialize, Deserialize};
@@ -58,20 +58,18 @@ async fn handler(req: ApiGatewayProxyRequest, _ctx: lambda_runtime::Context) -> 
         Method::GET => handler_get(
                 req,
                 &today_as_string, 
-                &environment_variables.table_name,
-                &environment_variables.table_primary_key, 
                 &environment_variables.user_reaction_table_name,
                 &environment_variables.user_reaction_table_primary_key,
+                &environment_variables.user_reaction_table_sort_key,
                 dynamodb_client
             ).await
             .map_err( HandlerError::GetError),
         Method::PUT => handler_put(
                 req, 
                 &today_as_string, 
-                &environment_variables.table_name, 
-                &environment_variables.table_primary_key,
                 &environment_variables.user_reaction_table_name,
                 &environment_variables.user_reaction_table_primary_key,
+                &environment_variables.user_reaction_table_sort_key,
                 dynamodb_client
             ).await
             .map_err(HandlerError::PutError),
@@ -141,10 +139,9 @@ impl From<DynamoDbUtilError> for GetHandlerError {
 async fn handler_get(
     req: ApiGatewayProxyRequest,
     today_as_string: &str,
-    table_name: &str,
-    table_primary_key: &str,
     user_reaction_table_name: &str,
     user_reaction_primary_key: &str,
+    user_reaction_sort_key: &str,
     dynamodb_client: DynamoDbClient
 ) -> Result<ApiGatewayProxyResponse, GetHandlerError> {
 
@@ -155,10 +152,21 @@ async fn handler_get(
             |uuid| uuid.to_owned()
         );
 
-    let get_item_from_key_result = dynamodb_client.get_item_from_key(
+    let keys_and_attributes: Vec<KeyAndAttribute> = vec![
+        KeyAndAttribute {
+            key: user_reaction_primary_key,
+            attribute: AttributeValue::S(today_as_string.to_owned())
+        },
+        KeyAndAttribute {
+            key: user_reaction_sort_key,
+            attribute: AttributeValue::S(curr_uuid.to_owned())
+        }
+    ];
+
+    let get_item_from_key_result = dynamodb_client.get_item_from_keys(
             user_reaction_table_name, 
-            user_reaction_primary_key, 
-            format!("{}_{}", curr_uuid, today_as_string.to_owned())
+            keys_and_attributes, 
+            
         ).await
         .ok();
         
@@ -238,10 +246,9 @@ impl From<String> for PutHandlerError {
 async fn handler_put(
     req: ApiGatewayProxyRequest, 
     today_as_string: &str, 
-    table_name: &str, 
-    table_primary_key: &str,
     user_reaction_table_name: &str,
     user_reaction_primary_key: &str,
+    user_reaction_search_key: &str,
     dynamodb_client: DynamoDbClient
 ) -> Result<ApiGatewayProxyResponse, PutHandlerError> {
     let body_as_str = req.body.ok_or_else(|| "Body does not exist".to_owned())?;
@@ -258,7 +265,11 @@ async fn handler_put(
         .table_name(user_reaction_table_name)
         .key(
             user_reaction_primary_key, 
-            AttributeValue::S(format!("{}_{}", uuid, today_as_string))
+            AttributeValue::S(today_as_string.to_owned())
+        )
+        .key(
+            user_reaction_search_key,
+            AttributeValue::S(uuid.to_owned())
         )
         .update_expression("SET reaction = :new_reaction")
         .expression_attribute_values(":new_reaction", AttributeValue::S(reaction.to_string()))
@@ -282,28 +293,24 @@ async fn handler_put(
 }
 
 struct EnvironmentVariables {
-    table_name: String,
-    table_primary_key: String,
     user_reaction_table_name: String,
     user_reaction_table_primary_key: String,
+    user_reaction_table_sort_key: String,
 }
 
 impl EnvironmentVariables {
     fn build() -> EnvironmentVariables {
-        let table_name = std::env::var("TABLE_NAME")
-            .expect("A TABLE_NAME must be set in this app's Lambda environment variables.");
-        let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
-            .expect("A TABLE_PRIMARY_KEY must be setn this app's Lambda environment varialbes.");
         let user_reaction_table_name = std::env::var("USER_REACTION_TABLE_NAME")
             .expect("A USER_REACTION_TABLE_NAME must be provided");
         let user_reaction_table_primary_key = std::env::var("USER_REACTION_TABLE_PRIMARY_KEY")
             .expect("A USER_REACTION_TABLE_PRIMARY_KEY must be provided");
+        let user_reaction_table_sort_key = std::env::var("USER_REACTION_TABLE_SORT_KEY")
+            .expect("A USER_REACTION_TABLE_SORT_KEY must be provided");
 
         EnvironmentVariables { 
-            table_name, 
-            table_primary_key,
             user_reaction_table_name,
-            user_reaction_table_primary_key
+            user_reaction_table_primary_key,
+            user_reaction_table_sort_key
         }
     }
 }
