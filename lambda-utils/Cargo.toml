@@ -13,4 +13,6 @@ http = "0.2.4"
 async-trait = "0.1.64"
 aws-sdk-dynamodb = "0.22.0"
 
+log = "0.4"
+
 

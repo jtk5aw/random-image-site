@@ -723,6 +723,7 @@ dependencies = [
  "aws-sdk-dynamodb",
  "aws_lambda_events",
  "http",
+ "log",
 ]
 
 [[package]]

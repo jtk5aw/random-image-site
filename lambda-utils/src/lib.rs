@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use aws_sdk_dynamodb::client::fluent_builders::GetItem;
+use aws_sdk_dynamodb::client::fluent_builders::{GetItem, UpdateItem};
+use aws_sdk_dynamodb::error::UpdateItemError;
+use aws_sdk_dynamodb::model::ReturnValue;
 use aws_sdk_dynamodb::{Client as DynamoDbClient, error::GetItemError, model::AttributeValue};
 use aws_sdk_dynamodb::types::SdkError as DynamoDbSdkError;
 use aws_lambda_events::{encodings::Body, event::apigw::ApiGatewayProxyResponse};
@@ -45,9 +47,15 @@ pub struct KeyAndAttribute<'a> {
     pub attribute: AttributeValue
 }
 
+pub struct KeyAndAttributeName<'a> {
+    pub key: &'a str,
+    pub attribute_name: &'a str
+}
+
 #[derive(Debug)]
 pub enum DynamoDbUtilError {
     GetItemFailure(Box<DynamoDbSdkError<GetItemError>>),
+    UpdateItemFailure(Box<DynamoDbSdkError<UpdateItemError>>),
     AttributeValueConversionFailure(AttributeValue),
     LocalError(String),
 }
@@ -55,6 +63,12 @@ pub enum DynamoDbUtilError {
 impl From<DynamoDbSdkError<GetItemError>> for DynamoDbUtilError {
     fn from(err: DynamoDbSdkError<GetItemError>) -> Self {
         Self::GetItemFailure(Box::new(err))
+    }
+}
+
+impl From<DynamoDbSdkError<UpdateItemError>> for DynamoDbUtilError {
+    fn from(err: DynamoDbSdkError<UpdateItemError>) -> Self {
+        Self::UpdateItemFailure(Box::new(err))
     }
 }
 
@@ -78,6 +92,16 @@ pub trait DynamoDbUtil {
         table_name: &str,
         keys_and_attributes: Vec<KeyAndAttribute<'a>>
     ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
+
+    async fn update_item_with_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<KeyAndAttribute<'a>>,
+        update_expression: String,
+        return_value: ReturnValue,
+        expression_attribute_names: Option<Vec<KeyAndAttributeName<'a>>>,
+        expression_attribute_values: Vec<KeyAndAttribute<'a>>
+    ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
 }
 
 #[async_trait]
@@ -94,7 +118,7 @@ impl DynamoDbUtil for DynamoDbClient {
             .table_name(table_name)
             .key(table_primary_key, AttributeValue::S(key));
 
-        Ok(send_request_get_item(get_item_request).await?)
+        Ok(get_item_request.send_request().await?)
     }
 
     async fn get_item_from_keys<'a>(
@@ -113,20 +137,82 @@ impl DynamoDbUtil for DynamoDbClient {
             );
         }
         
-        Ok(send_request_get_item(get_item_request).await?)
+        Ok(get_item_request.send_request().await?)
+    }
+
+    async fn update_item_with_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<KeyAndAttribute<'a>>,
+        update_expression: String,
+        return_value: ReturnValue,
+        expression_attribute_names: Option<Vec<KeyAndAttributeName<'a>>>,
+        expression_attribute_values: Vec<KeyAndAttribute<'a>>,
+    ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
+        let mut update_item_request = self
+            .update_item()
+            .table_name(table_name)
+            .update_expression(update_expression)
+            .return_values(return_value);
+
+        // Set the keys to be queried on
+        for key_and_attribute in keys_and_attributes {
+            update_item_request = update_item_request.key(
+                key_and_attribute.key, key_and_attribute.attribute
+            );
+        }
+        
+        // Set the expression attribute names used in teh update expression
+        if let Some(names) = expression_attribute_names {
+            for key_and_attribute in names {
+                update_item_request = update_item_request.expression_attribute_names(
+                    key_and_attribute.key, key_and_attribute.attribute_name
+                );
+            }
+        }
+
+        // Set the expression attribute values used in the update expression
+        for key_and_attribute in expression_attribute_values {
+            update_item_request = update_item_request.expression_attribute_values(
+                key_and_attribute.key, key_and_attribute.attribute
+            )
+        }
+
+        Ok(update_item_request.send_request().await?)
     }
 }
 
-async fn send_request_get_item(
-    get_item_request: GetItem
-) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
-    let get_item_result = get_item_request
-        .send()
-        .await?;
+#[async_trait]
+trait DynamoDbSend {
+    async fn send_request(self) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
+}
 
-    let item = get_item_result
-        .item()
-        .ok_or_else(|| "Getting the set object failed".to_owned())?;
+#[async_trait]
+impl DynamoDbSend for GetItem {
+    async fn send_request(self) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
+        let get_item_result = self
+            .send()
+            .await?;
 
-    Ok(item.to_owned())
-} 
+        let item = get_item_result
+            .item()
+            .ok_or_else(|| "Getting the set object failed".to_owned())?;
+
+        Ok(item.to_owned())
+    } 
+}
+
+#[async_trait]
+impl DynamoDbSend for UpdateItem {
+    async fn send_request(self) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
+        let update_item_result = self
+            .send()
+            .await?;
+    
+        let attributes = update_item_result
+            .attributes()
+            .ok_or_else(|| "Updating the item failed".to_owned())?;
+    
+        Ok(attributes.to_owned())
+    } 
+}
