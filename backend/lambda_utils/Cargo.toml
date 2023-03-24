@@ -1,5 +1,5 @@
 [package]
-name = "lambda-utils"
+name = "lambda_utils"
 version = "0.1.0"
 edition = "2021"
 authors = ["jacksontkennedy99@gmail.com"]

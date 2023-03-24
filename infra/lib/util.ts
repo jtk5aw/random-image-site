@@ -12,12 +12,18 @@ interface ApiProps {
     user_reaction_table_sort_key: string;
 }
 
+const BACKEND_BASE_DIR = '..\\backend\\target\\x86_64-unknown-linux-musl\\release\\'
+
+function getLambdaPath(lambdaName: string) {
+  return `${BACKEND_BASE_DIR}${lambdaName}\\`;
+}
+
 export function constructApi(scope: Construct, props: ApiProps) {
     // Compute
     const handler = new lambda.Function(scope, 'GetImageLambda', {
         functionName: 'GetImageLambda',
         code: lambda.Code.fromAsset(
-          '..\\get-image-lambda\\target\\x86_64-unknown-linux-musl\\release\\lambda'
+          getLambdaPath('dir_get_image_lambda'),
         ),
         runtime: lambda.Runtime.PROVIDED_AL2,
         handler: 'not.required',
@@ -42,7 +48,7 @@ export function constructApi(scope: Construct, props: ApiProps) {
       const getOrSetMetadataHandler = new lambda.Function(scope, 'GetOrSetMetadataLambda', {
         functionName: 'GetOrSetMetadataLambda',
         code: lambda.Code.fromAsset(
-          '..\\get-or-set-reaction-lambda\\target\\x86_64-unknown-linux-musl\\release\\lambda'
+          getLambdaPath('dir_get_or_set_reaction_lambda'),
         ),
         runtime: lambda.Runtime.PROVIDED_AL2,
         handler: 'not.required',

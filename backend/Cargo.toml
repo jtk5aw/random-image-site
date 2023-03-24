@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "get_image_lambda",
+    "get_or_set_reaction_lambda"
+]

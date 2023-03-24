@@ -1,5 +1,5 @@
 [package]
-name = "get-or-set-reaction-lambda"
+name = "get-image-lambda"
 version = "0.1.0"
 edition = "2021"
 authors = ["jacksontkennedy99@gmail.com"]
@@ -10,25 +10,24 @@ license = "MIT"
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 serde = "1"
-serde_json = "1.0.93"
-strum = "0.24"
-strum_macros = "0.24.3"
+rand = "0.8.5"
 log = "0.4"
 simple_logger = "1.11.0"
 chrono = "0.4.23"
 base64 = "0.20.0"
+bytes = "1.3.0"
 http = "0.2.4"
-uuid = {version="1.3.0", features=["v4", "fast-rng", "macro-diagnostics"]}
 # NOTE: the following crate is not part of the SDK, but it is maintained by AWS.
 lambda_runtime = "0.4"
 aws-config = "0.52.0"
 aws_lambda_events = "0.5.0"
 # AWS SDKs
+aws-sdk-s3 = "0.22.0"
 aws-sdk-dynamodb = "0.22.0"
 
 # Local dependencies
-lambda-utils = { path = "../lambda-utils", version = "0.1.0" }
+lambda_utils = { path = "../lambda_utils", version = "0.1.0" }
 
 [[bin]]
-name = "bootstrap"
+name = "get_image_lambda"
 path = "src/main.rs"
