@@ -1,5 +1,5 @@
 use aws_sdk_dynamodb::model::AttributeValue;
-use lambda_utils::{DynamoDbUtil, DynamoDbUtilError};
+use lambda_utils::aws_sdk::{DynamoDbUtilError, DynamoDbUtil};
 use log::info;
 
 use aws_sdk_s3::error::GetObjectError;

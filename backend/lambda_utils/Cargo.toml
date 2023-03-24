@@ -10,6 +10,8 @@ license = "MIT"
 [dependencies]
 aws_lambda_events = "0.5.0"
 http = "0.2.4"
+strum = "0.24"
+strum_macros = "0.24.3"
 async-trait = "0.1.64"
 aws-sdk-dynamodb = "0.22.0"
 

@@ -11,8 +11,6 @@ license = "MIT"
 tokio = { version = "1", features = ["full"] }
 serde = "1"
 serde_json = "1.0.93"
-strum = "0.24"
-strum_macros = "0.24.3"
 log = "0.4"
 simple_logger = "1.11.0"
 chrono = "0.4.23"

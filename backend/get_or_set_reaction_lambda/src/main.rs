@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr, collections::HashMap};
+use std::collections::HashMap;
 
 use aws_sdk_dynamodb::{
     model::{AttributeValue, ReturnValue},
@@ -6,10 +6,7 @@ use aws_sdk_dynamodb::{
 };
 use chrono::Local;
 use http::Method;
-use lambda_utils::{
-    ApiGatewayProxyResponseWithoutHeaders, DynamoDbUtil, DynamoDbUtilError, KeyAndAttribute,
-    KeyAndAttributeName,
-};
+use lambda_utils::{aws_sdk::{ApiGatewayProxyResponseWithoutHeaders, DynamoDbUtilError, KeyAndAttribute, KeyAndAttributeName, DynamoDbUtil}, models::{Reactions, ReactionError}};
 use log::{error, info, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Error as SerdeJsonError;
@@ -20,8 +17,6 @@ use aws_lambda_events::{
     event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
 };
 use lambda_runtime::handler_fn;
-use strum::{ParseError, IntoEnumIterator};
-use strum_macros::{EnumString, EnumIter};
 use uuid::Uuid;
 
 #[tokio::main]
@@ -112,22 +107,6 @@ struct ResponseBody {
     uuid: String,
     reaction: String,
     counts: HashMap<String, String>
-}
-
-// Reactions Enum that can be converted into strings
-#[derive(Debug, EnumString, EnumIter)]
-pub enum Reactions {
-    NoReaction,
-    Funny,
-    Love,
-    Eesh,
-    Pain,
-}
-
-impl fmt::Display for Reactions {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
 }
 
 // Error enum for GET
@@ -223,7 +202,7 @@ struct RequestBody {
 #[derive(Debug)]
 pub enum PutHandlerError {
     SerdeParseError(SerdeJsonError),
-    EnumStrParseError(ParseError),
+    ReactionError(ReactionError),
     UpdateItemError(DynamoDbUtilError),
     AttributeValueConversionFailure(AttributeValue),
     LocalError(String),
@@ -235,9 +214,9 @@ impl From<SerdeJsonError> for PutHandlerError {
     }
 }
 
-impl From<ParseError> for PutHandlerError {
-    fn from(err: ParseError) -> Self {
-        Self::EnumStrParseError(err)
+impl From<ReactionError> for PutHandlerError {
+    fn from(err: ReactionError) -> Self {
+        Self::ReactionError(err)
     }
 }
 
@@ -274,7 +253,7 @@ async fn handler_put(
     info!("body_as_str: {}, body: {:?}", body_as_str, body);
 
     let uuid = &body.uuid;
-    let reaction = Reactions::from_str(&body.reaction)?;
+    let reaction = Reactions::get_reaction(&body.reaction)?;
     let reaction_string = reaction.to_string();
 
     let keys_and_attributes = build_user_reaction_key_and_attribute(
@@ -321,7 +300,7 @@ async fn handler_put(
         "ReactionCounts",
     );
 
-    let starting_counts_map = build_starting_counts();
+    let starting_counts_map = Reactions::build_starting_counts();
 
     let counts_setup_attribute_values = vec![
         KeyAndAttribute {
@@ -330,7 +309,7 @@ async fn handler_put(
         }
     ];
 
-    let update_counts_result = dynamodb_client.update_item_with_keys(
+    let _update_counts_result = dynamodb_client.update_item_with_keys(
         user_reaction_table_name,
         counts_keys_and_attributes,
         "SET Counts = if_not_exists(Counts, :counts_map)".to_owned(),
@@ -445,15 +424,6 @@ fn handle_old_reaction_error(
 
     error!("Error was a failure to update the previous reaction");
     Err(PutHandlerError::UpdateItemError(err))
-}
-
-fn build_starting_counts() -> HashMap<String, AttributeValue> {
-
-    let mut starting_counts = HashMap::new();
-    for reaction in Reactions::iter() {
-        starting_counts.insert(reaction.to_string(), AttributeValue::N("0".to_owned()));
-    };
-    return starting_counts
 }
 
 /** Utilities */

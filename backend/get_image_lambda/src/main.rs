@@ -7,7 +7,7 @@ use lambda_runtime::handler_fn;
 use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_lambda_events::encodings::Body;
 
-use lambda_utils::{ApiGatewayProxyResponseWithoutHeaders};
+use lambda_utils::aws_sdk::ApiGatewayProxyResponseWithoutHeaders;
 
 use get_image_lambda::get_already_set::get_already_set_object;
 use get_image_lambda::select_and_set::select_and_set_random_s3_object;
