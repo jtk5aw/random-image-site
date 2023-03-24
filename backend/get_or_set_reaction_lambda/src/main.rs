@@ -148,6 +148,7 @@ async fn handler_get(
         .get("uuid")
         .map_or(Uuid::new_v4().to_string(), |uuid| uuid.to_owned());
 
+    // Get the reaction string
     let keys_and_attributes = build_user_reaction_key_and_attribute(
         user_reaction_primary_key,
         user_reaction_sort_key,
@@ -175,6 +176,10 @@ async fn handler_get(
         None => Reactions::NoReaction.to_string(),
     };
 
+    // TODO: Abstract out all calls to the dynamodb user_reaction table into a DAO. That way 
+    // a call to get the updated counts can be easily made here and doesn't rely on PutHandlerError
+    // Will also simplify all the shared setup in the PutHandler across all the calls. 
+    
     let response_body = ResponseBody {
         uuid: curr_uuid,
         reaction: reaction_string,
@@ -319,7 +324,7 @@ async fn handler_put(
 
     ).await?;
 
-    // Make request to update the counts
+    // Make request to update/get the counts
     let counts_keys_and_attributes = build_user_reaction_key_and_attribute(
         user_reaction_primary_key,
         user_reaction_sort_key,
@@ -327,56 +332,22 @@ async fn handler_put(
         "ReactionCounts",
     );
 
-    let counts_expression_attribute_names = Some(vec![
-        KeyAndAttributeName {
-            key: "#new_reaction",
-            attribute_name: &reaction_string,
-        },
-        KeyAndAttributeName {
-            key: "#old_reaction",
-            attribute_name: &old_reaction,
-        },
-    ]);
-
-    let counts_expression_attribute_values = vec![
-        KeyAndAttribute {
-            key: ":count",
-            attribute: AttributeValue::N("1".to_owned()),
-        }
-    ];
-    
-    // TODO: If the same reaction is used twice in a row that will cause issues
-    let update_counts_result = dynamodb_client.update_item_with_keys(
-        user_reaction_table_name,
-        counts_keys_and_attributes,
-        "SET Counts.#new_reaction = Counts.#new_reaction + :count , Counts.#old_reaction = Counts.#old_reaction - :count".to_owned(),
-        ReturnValue::AllNew,
-        counts_expression_attribute_names,
-        counts_expression_attribute_values
-
-    ).await?;
-
-    info!("Request to update counts completed");
-
-    let updated_counts = update_counts_result
-        .get("Counts")
-        .ok_or_else(|| "Did not successfully update counts".to_owned())?
-        .as_m()
-        .ok();
-
-    // Default to 0 on any error
-    let mut numeric_counts: HashMap<String, String> = HashMap::default();
-    if let Some(counts) = updated_counts {
-        for (key, value) in counts {
-            let count = value
-                .as_n()
-                .map_or(
-                    "0".to_owned(), 
-                    |val| val.to_owned()
-                );
-            numeric_counts.insert(key.to_owned(), count);
-        }
-    }
+    let numeric_counts = 
+        if old_reaction != reaction_string {
+            update_counts(
+                user_reaction_table_name,
+                counts_keys_and_attributes,
+                &reaction_string,
+                &old_reaction, 
+                dynamodb_client
+            ).await?
+        } else {
+            get_counts(
+                user_reaction_table_name,
+                counts_keys_and_attributes,
+                dynamodb_client
+            ).await?
+        };
 
     info!("The counts are: {:?}", numeric_counts);
 
@@ -424,6 +395,90 @@ fn handle_old_reaction_error(
 
     error!("Error was a failure to update the previous reaction");
     Err(PutHandlerError::UpdateItemError(err))
+}
+
+async fn update_counts(
+    user_reaction_table_name: &str,
+    keys_and_attributes: Vec<KeyAndAttribute<'_>>, 
+    new_reaction: &str,
+    old_reaction: &str, 
+    dynamodb_client: DynamoDbClient
+) -> Result<HashMap<String, String>, PutHandlerError> {
+
+    let counts_expression_attribute_names = Some(vec![
+        KeyAndAttributeName {
+            key: "#new_reaction",
+            attribute_name: new_reaction,
+        },
+        KeyAndAttributeName {
+            key: "#old_reaction",
+            attribute_name: old_reaction,
+        },
+    ]);
+
+    let counts_expression_attribute_values = vec![
+        KeyAndAttribute {
+            key: ":count",
+            attribute: AttributeValue::N("1".to_owned()),
+        }
+    ];
+    
+    let update_counts_result = dynamodb_client.update_item_with_keys(
+        user_reaction_table_name,
+        keys_and_attributes,
+        "SET Counts.#new_reaction = Counts.#new_reaction + :count , Counts.#old_reaction = Counts.#old_reaction - :count".to_owned(),
+        ReturnValue::AllNew,
+        counts_expression_attribute_names,
+        counts_expression_attribute_values
+
+    ).await?;
+
+    info!("Request to update counts completed");
+
+    let updated_counts = update_counts_result
+        .get("Counts")
+        .ok_or_else(|| "Did not successfully update counts".to_owned())?
+        .as_m()
+        .map_err(|err| err.to_owned())?;
+
+    generate_numeric_counts(updated_counts)
+}
+
+async fn get_counts(    
+    user_reaction_table_name: &str,
+    keys_and_attribute: Vec<KeyAndAttribute<'_>>,
+    dynamodb_client: DynamoDbClient
+) -> Result<HashMap<String, String>, PutHandlerError> {
+    let get_counts_result = dynamodb_client.get_item_from_keys(
+        user_reaction_table_name, 
+        keys_and_attribute
+    ).await?;
+
+    let counts = get_counts_result
+        .get("Counts")
+        .ok_or_else(|| "Did not successfully update counts".to_owned())?
+        .as_m()
+        .map_err(|err| err.to_owned())?;
+
+    info!("Request to retrieve counts completed");
+
+    generate_numeric_counts(counts)
+}
+
+fn generate_numeric_counts(
+    retrieved_counts: &HashMap<String, AttributeValue>
+) -> Result<HashMap<String, String>, PutHandlerError> {
+    let mut numeric_counts: HashMap<String, String> = HashMap::default();
+    for (key, value) in retrieved_counts {
+        let count = value
+            .as_n()
+            .map_or(
+                "0".to_owned(), 
+                |val| val.to_owned()
+            );
+        numeric_counts.insert(key.to_owned(), count);
+    }
+    Ok(numeric_counts)
 }
 
 /** Utilities */
