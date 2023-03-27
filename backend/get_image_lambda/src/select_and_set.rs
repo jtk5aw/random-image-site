@@ -1,7 +1,7 @@
 use std::collections::{HashSet, HashMap};
 
 use aws_sdk_s3::model::Object;
-use chrono::{Local, DateTime, Days, Duration};
+use chrono::{Local, DateTime, Duration};
 use log::{info, error};
 
 use aws_sdk_s3::error::{GetObjectError, ListObjectsError};
@@ -68,11 +68,11 @@ pub async fn select_and_set_random_s3_object(
 
     let random_selected_object_key = random_selected_object
         .key()
-        .ok_or("Randomly selected objects key does not exist".to_owned())?;
+        .ok_or_else(||"Randomly selected objects key does not exist".to_owned())?;
 
     info!("Selected a random object with the following key: {:?}", random_selected_object_key);
 
-    let _ = set_random_object_in_s3(table_name, table_primary_key, &random_selected_object, date_string, &dynamodb_client)
+    set_random_object_in_s3(table_name, table_primary_key, &random_selected_object, date_string, dynamodb_client)
         .await
         .map_err(|err| {
             error!("Failed to write the random object to dynamodb due to the following: {:?}", err);
@@ -94,13 +94,13 @@ pub async fn select_and_set_random_s3_object(
 
 #[derive(Debug)]
 pub enum GetRecentImagesError {
-    BatchGetFailure(DynamoDbSdkError<BatchGetItemError>),
+    BatchGetFailure(Box<DynamoDbSdkError<BatchGetItemError>>),
     LocalError(String)
 }
 
 impl From<DynamoDbSdkError<BatchGetItemError>> for GetRecentImagesError {
     fn from(err: DynamoDbSdkError<BatchGetItemError>) -> GetRecentImagesError {
-        GetRecentImagesError::BatchGetFailure(err)
+        GetRecentImagesError::BatchGetFailure(Box::new(err))
     }
 }
 
@@ -145,9 +145,9 @@ async fn get_recent_images(
         .send()
         .await?
         .responses()
-        .ok_or("There were no available responses".to_owned())?
+        .ok_or_else(|| "There were no available responses".to_owned())?
         .get(table_name)
-        .ok_or("The desired table name returned not responses".to_owned())?
+        .ok_or_else(|| "The desired table name returned not responses".to_owned())?
         .iter()
         .map(|key_and_vals| {
             match key_and_vals.get("object_key") {
@@ -204,7 +204,7 @@ async fn select_random_s3_object(
     // Retrieve list of all objects in the bucket
     let objects_list = list_objects_output
         .contents()
-        .ok_or("No List of returned values found".to_owned())?;
+        .ok_or_else(|| "No List of returned values found".to_owned())?;
 
     info!("Found {} objects", objects_list.len());
 
@@ -212,7 +212,7 @@ async fn select_random_s3_object(
     loop {
         let random_object = objects_list
             .choose(&mut rand::thread_rng())
-            .ok_or("Randomly selected object did not exist".to_owned())?;
+            .ok_or_else(|| "Randomly selected object did not exist".to_owned())?;
 
         info!("Randomly selected object: {:?}", random_object);
         
@@ -225,13 +225,13 @@ async fn select_random_s3_object(
 
 #[derive(Debug)]
 pub enum SetRandomObjectError {
-    PutItemFailure(DynamoDbSdkError<PutItemError>),
+    PutItemFailure(Box<DynamoDbSdkError<PutItemError>>),
     LocalError(String),
 }
 
 impl From<DynamoDbSdkError<PutItemError>> for SetRandomObjectError {
     fn from(err: DynamoDbSdkError<PutItemError>) -> SetRandomObjectError {
-        SetRandomObjectError::PutItemFailure(err)
+        SetRandomObjectError::PutItemFailure(Box::new(err))
     }
 }
 
@@ -253,7 +253,7 @@ async fn set_random_object_in_s3(
 
     let object_key = object
         .key()
-        .ok_or("Provided object's key does not exist".to_owned())?;
+        .ok_or_else(|| "Provided object's key does not exist".to_owned())?;
 
     let put_result = dynamodb_client
         .put_item()

@@ -9,7 +9,7 @@ use aws_sdk_s3::output::GetObjectOutput;
 #[derive(Debug)]
 pub enum GetAlreadySetObjectError {
     GetItemFromKeyError(DynamoDbUtilError),
-    GetObjectFalure(S3SdkError<GetObjectError>),
+    GetObjectFalure(Box<S3SdkError<GetObjectError>>),
     AttributeValueConversionFailure(AttributeValue),
     LocalError(String),
 }
@@ -28,7 +28,7 @@ impl From<AttributeValue> for GetAlreadySetObjectError {
 
 impl From<S3SdkError<GetObjectError>> for GetAlreadySetObjectError {
     fn from(err: S3SdkError<GetObjectError>) -> GetAlreadySetObjectError {
-        GetAlreadySetObjectError::GetObjectFalure(err)
+        GetAlreadySetObjectError::GetObjectFalure(Box::new(err))
     }
 }
 
@@ -58,7 +58,7 @@ pub async fn get_already_set_object(
 
     let object_key = item
         .get("object_key")
-        .ok_or("Set object object_key does not exist".to_owned())?
+        .ok_or_else(|| "Set object object_key does not exist".to_owned())?
         .as_s()
         .map_err(|att_val| {
             att_val.to_owned()
@@ -71,7 +71,7 @@ pub async fn get_already_set_object(
         .send()
         .await
         .map_err(|err| {
-            GetAlreadySetObjectError::GetObjectFalure(err)
+            GetAlreadySetObjectError::GetObjectFalure(Box::new(err))
         })
 }
 
