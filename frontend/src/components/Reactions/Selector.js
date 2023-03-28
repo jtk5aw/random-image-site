@@ -1,15 +1,15 @@
-import React from 'react'
-import _ from 'lodash'
+import React from 'react';
 import {getIcon} from './icons';
 import '../../App.css';
 
 import SelectorEmoji from './SelectorEmoji'
+import { orderAndFilterReactions } from './dataUtils';
 
 export const Selector = ({ reactions, currReaction, onSelect }) => {
 
   return (
     <div className="Todays-Reaction">
-      { _.map(reactions, (reaction) => {
+      { orderAndFilterReactions(reactions, (reaction) => {
         return (
           <div className="Todays-Icons" key={ reaction }>
             <SelectorEmoji
@@ -20,7 +20,7 @@ export const Selector = ({ reactions, currReaction, onSelect }) => {
             />
           </div>
         )
-      }) }
+      })}
     </div>
   )
 }

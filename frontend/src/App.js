@@ -1,11 +1,12 @@
-import heart from './HUMAN_HEART.svg';
+import heart from './HUMAN_HEART-cropped.svg';
 import { TODAYS_IMAGE_ENDPOINT, TODAYS_METADATA_ENDPOINT } from './config/api';
 import './App.css';
 
 import axios from 'axios';
 import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query';
-import Selector from './components/Selector/Selector';
+import Selector from './components/Reactions/Selector';
+import ReactionCounts from './components/Reactions/ReactionCounts';
 
 const queryClient = new QueryClient();
 
@@ -21,7 +22,7 @@ function Page() {
   // Fetch the current image
   const todaysImageResponse = useQuery({
     queryKey: ['imageString'],
-    queryFn: () => 
+    queryFn: () =>
       axios.get(TODAYS_IMAGE_ENDPOINT)
         .then((res) => res.data)
   });
@@ -30,7 +31,7 @@ function Page() {
   const todaysMetadataResponse = useQuery({
     queryKey: ['metadata'],
     retry: false,
-    queryFn: () =>  
+    queryFn: () =>
       axios.get(TODAYS_METADATA_ENDPOINT, { 
         params : { 
           uuid: localStorage.getItem('uuid') 
@@ -44,9 +45,9 @@ function Page() {
 }
 
 const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
-  const [showImage, setShowImage] = useState(false);
   const [currReaction, setCurrReaction] = useState('NoReaction');
   const [currUuid, setCurrUuid] = useState(null);
+  const [currReactionCounts, setCurrReactionCounts] = useState(null);
 
   // Set state and localStorage based on todays metadata
   useEffect(() => {
@@ -64,8 +65,12 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
     }
   }, [todaysMetadataResponse])
 
-  // Start showing the image
-  const onClick = () => setShowImage(true);
+
+  useEffect(() => {
+    if (todaysMetadataResponse.isSuccess) {
+      setCurrReactionCounts(todaysMetadataResponse.data.counts);
+    }
+  }, [todaysMetadataResponse]);
 
   // On emoji press, update the reaction
   const onEmojiClick = (uuid) => (reaction) => {
@@ -73,31 +78,31 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
     .then(res => {
       // Means the put was successful
       setCurrReaction(reaction)
+      setCurrReactionCounts(res.data.counts)
     })
   }
 
   return (
     <div className="App">
-      <div className="Title-Header" onClick={onClick}> 
-        <img src={heart} className="Header-Image" alt="Human heart" />
+      <div className="Title-Header"> 
         <p>
-          Click only if you're Maeov. No one else click 😡
+          ForMaeov
         </p>
+        <img src={heart} className="Header-Image" alt="Human heart" />
       </div>
-      { showImage 
-        ? <AppBody 
+      <AppBody 
             todaysImageLoading={todaysImageResponse.isLoading}
             todaysMetadataLoading={todaysMetadataResponse.isLoading}
             imageString={todaysImageResponse.data} 
             currReaction={currReaction}
+            currReactionCounts={currReactionCounts}
             currUuid={currUuid}
-            onEmojiClick={onEmojiClick} /> 
-        : null }
+            onEmojiClick={onEmojiClick} />
     </div>
   );
 }
 
-const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageString, currReaction, currUuid, onEmojiClick}) => (
+const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageString, currReaction, currReactionCounts, currUuid, onEmojiClick}) => (
   <div className="App-Body">
       {
         todaysImageLoading || todaysMetadataLoading
@@ -106,19 +111,17 @@ const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageString, currRe
               imageString={imageString}
               currUuid={currUuid}
               currReaction={currReaction}
+              currReactionCounts={currReactionCounts}
               onEmojiClick={onEmojiClick(currUuid)} />
       }
   </div>
 );
 
-const Successful = ({imageString, currReaction, onEmojiClick}) => {
+const Successful = ({imageString, currReaction, currReactionCounts, onEmojiClick}) => {
   return <div>
     <img src={`data:image/jpg;base64,${imageString}`} className="Todays-Image" alt="todays pic" />
+    <ReactionCounts currReactionCounts={currReactionCounts} />
     <Selector currReaction={currReaction} onSelect={onEmojiClick} />
-    <p className="Todays-Text">
-      Here is todays specially selected image 😎
-      I hope you like this one and I hope you come back tomorrow for another one. 
-    </p>
   </div>
 }
 
