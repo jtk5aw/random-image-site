@@ -1,13 +1,16 @@
 use std::collections::{HashMap};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use serenity::async_trait;
+use image::{DynamicImage, ImageError};
+use random_image_site_discord_bot::type_map_keys::{AcceptedChannels, AcceptedChannelsTrait};
+use reqwest::{Error as ReqwestError};
+use serenity::{async_trait, Client};
+use serenity::client::EventHandler;
 use serenity::framework::standard::macros::{hook, group, command};
-use serenity::model::prelude::{ChannelId, GuildId, Attachment};
-use serenity::prelude::*;
 use serenity::model::channel::Message;
 use serenity::framework::standard::{StandardFramework, CommandResult};
-use tracing::{info_span, info, event, error};
+use serenity::prelude::{GatewayIntents, Context};
+use tracing::{info_span, info, error, instrument};
 
 #[group]
 struct Images;
@@ -16,12 +19,6 @@ struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {}
-
-struct AcceptedChannels;
-
-impl TypeMapKey for AcceptedChannels {
-    type Value = Arc<Mutex<HashMap<GuildId, Option<ChannelId>>>>;
-}
 
 #[tokio::main]
 async fn main() {
@@ -75,89 +72,80 @@ async fn message(ctx: &Context, msg: &Message) {
     
     info!(message_id = %msg.id);
 
-    if !accepted_channel(ctx, msg).await {
+    if !AcceptedChannels::accepted_channel(ctx, msg).await {
         info!(channel_id = %msg.channel_id, "Message not in the #images channel. Ignoring.");
         return;
     }
     
     info!(channel_id = %msg.channel_id, "Message is in the #images channel. Processing.");
 
+    info!(message = ?msg);
+
     match get_attachment(ctx, msg).await {
-        Some(attachment) => process_attachment(ctx, msg, attachment).await,
-        None => {
-            info!("The message has no attachment.");
+        Ok(dynamic_image) => process_image(ctx, msg, dynamic_image).await,
+        Err(GetAttachmentError::NoAttachmentError(_)) => info!("No attachment. No processing necessary."),
+        Err(err) => {
+            error!(error = ?err, "Failed to process the given attachment.");
         }
     };
 }
 
-async fn accepted_channel(ctx: &Context, msg: &Message) -> bool {
-    // Only is None if not received over the Gateway. All messages should be
-    let guild_id = msg.guild_id.unwrap();
+#[derive(Debug)]
+pub enum GetAttachmentError {
+    LoadImageError(ImageError),
+    GetImageError(ReqwestError),
+    NoAttachmentError(String)
+}
 
-    // Acquire a way to lock the currently accepted channels
-    let current_accepted_channels_lock = {
-        let data_read = ctx.data.read().await;
-        data_read.get::<AcceptedChannels>().expect("Expected Accepted Channels in TypeMap").clone()
-    };
-
-    // Check if the messages guild_id already exists in the channel map
-    let has_guild_id = {
-        let current_accepted_channels = current_accepted_channels_lock.lock().await;
-        current_accepted_channels.contains_key(&guild_id)
-    };
-
-    // If it does not, try to find the #images channel and add it
-    if !has_guild_id {
-        info!(guild_id = %guild_id, "The current guild_id is not in the accepted_channels map. Adding it now.");
-
-        // Fetch all channels for the current guild
-        let channels = guild_id
-            .channels(ctx)
-            .await
-            .map_or_else(
-                |err| HashMap::default(), 
-                |channels| channels
-            );
-        let channel_id = channels
-            .iter()
-            .find(|(_, channel)| channel.name == "images")
-            .map_or_else(
-                || None, 
-                |(channel_id, _)| Some(channel_id.to_owned()));
-
-        let mut current_accepted_channels = current_accepted_channels_lock.lock().await;
-        current_accepted_channels.insert(guild_id, channel_id);
-
-        info!("A Optional channel_id was added to the accepted_channels map.");
-    }
-
-    // Finally compare the messages channel id with the #images channel id
-    { 
-        let current_accepted_channels = current_accepted_channels_lock.lock().await;
-        let accepted_channel_id = current_accepted_channels.get(&guild_id).unwrap_or(&None::<ChannelId>);
-
-        // Use unwrap because it will short-circuit before reaching that
-        accepted_channel_id.is_some() && accepted_channel_id.unwrap() == msg.channel_id
+impl From<String> for GetAttachmentError {
+    fn from(err: String) -> Self {
+        Self::NoAttachmentError(err)
     }
 }
 
-async fn get_attachment(_ctx: &Context, _msg: &Message) -> Option<Attachment> {
-    todo!("Get the attachement from the message");
+impl From<ReqwestError> for GetAttachmentError {
+    fn from(err: ReqwestError) -> Self {
+        Self::GetImageError(err)
+    }
+}
+
+impl From<ImageError> for GetAttachmentError {
+    fn from(err: ImageError) -> Self {
+        Self::LoadImageError(err)
+    }
+}
+
+#[instrument(skip_all)]
+async fn get_attachment(_ctx: &Context, msg: &Message) -> Result<DynamicImage, GetAttachmentError> {
+    let attachment = msg.attachments.first()
+        .ok_or_else(|| "No attachment found".to_owned())?;
+
+    info!("Received an attachment from the provided message");
+
+    let image_bytes = reqwest::get(&attachment.url)
+        .await?
+        .bytes()
+        .await?;
+
+    info!("Fetched the provided attachment from its url");
+
+    Ok(image::load_from_memory(&image_bytes)?)
 }
 
 #[derive(Debug)]
 pub enum ProcessingError {}
 
-async fn process_attachment(ctx: &Context, msg: &Message, attachment: Attachment) {
-    match upload_attachment(attachment).await {
+#[instrument(skip_all)]
+async fn process_image(ctx: &Context, msg: &Message, image: DynamicImage) {
+    match upload_image(image).await {
         Ok(()) => {
-            info!("Processed the attachment successfully");
-            if let Err(err) = msg.reply(ctx, "This attachement was successfuly processed!").await {
+            info!("Processed the image successfully");
+            if let Err(err) = msg.reply(ctx, "This iamge was successfuly processed!").await {
                 error!(error = %err, "Failed to reply to the message indicating it was processed successfully");
             };
         },
         Err(processing_error) => {
-            error!("Failed to process the attachment");
+            error!("Failed to process the image");
             if let Err(reply_error) = msg.reply(ctx, format!("There was an error processing this attachemtn: {:?}", processing_error)).await {
                 error!(error = %reply_error, "Failed to reply to the message indicating it was not processed");
             }
@@ -166,8 +154,19 @@ async fn process_attachment(ctx: &Context, msg: &Message, attachment: Attachment
 }
 
 #[derive(Debug)]
-pub enum UploadError {}
+pub enum UploadError {
+    WriteError(ImageError)
+}
 
-async fn upload_attachment(attachment: Attachment) -> Result<(), UploadError> {
-    todo!("Implement converstion to JPG from PNG and also the upload functionality. Probably need to pass in an S3 client somehow");
+impl From<ImageError> for UploadError {
+    fn from(err: ImageError) -> Self {
+        Self::WriteError(err)
+    }
+}
+
+async fn upload_image(image: DynamicImage) -> Result<(), UploadError> {
+    // Figure out how to pass in S3 Client
+    // should be able to be used across threads so not sure how that will work with TypeValueKey
+    // That might honestly be overkill, might be possible to share clients another way? 
+    Ok(image.save("test_image.jpg")?)
 }
