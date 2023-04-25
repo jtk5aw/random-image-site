@@ -3,6 +3,10 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 use serenity::{prelude::{TypeMapKey, Context}, model::prelude::{ChannelId, GuildId, Message}, async_trait};
 use tracing::{instrument, info};
 
+/**
+ * Shared map of GuildId to accepted channel. 
+ * Keeps track of channel ids for all #images channels
+ */
 pub struct AcceptedChannels;
 
 impl TypeMapKey for AcceptedChannels {
@@ -42,7 +46,7 @@ impl AcceptedChannelsTrait for AcceptedChannels {
                 .channels(ctx)
                 .await
                 .map_or_else(
-                    |err| HashMap::default(), 
+                    |_err| HashMap::default(), 
                     |channels| channels
                 );
             let channel_id = channels
@@ -67,4 +71,18 @@ impl AcceptedChannelsTrait for AcceptedChannels {
             accepted_channel_id.is_some() && accepted_channel_id.unwrap() == msg.channel_id
         }
     }
+}
+
+/**
+ * Shared AWS clients
+ */
+pub struct AwsClientsContainer {
+    pub s3: aws_sdk_s3::Client,
+    pub secrets_manager: aws_sdk_secretsmanager::Client
+}
+
+pub struct AwsClients;
+
+impl TypeMapKey for AwsClients {
+    type Value = Arc<AwsClientsContainer>;
 }

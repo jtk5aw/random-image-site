@@ -2,7 +2,7 @@ use std::collections::{HashMap};
 use std::sync::{Arc, Mutex};
 
 use image::{DynamicImage, ImageError};
-use random_image_site_discord_bot::type_map_keys::{AcceptedChannels, AcceptedChannelsTrait};
+use random_image_site_discord_bot::type_map_keys::{AcceptedChannels, AcceptedChannelsTrait, AwsClients, AwsClientsContainer};
 use reqwest::{Error as ReqwestError};
 use serenity::{async_trait, Client};
 use serenity::client::EventHandler;
@@ -20,6 +20,8 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {}
 
+const DISCORD_SECRET_ID: &str = "discord_api_token";
+
 #[tokio::main]
 async fn main() {
     // Setup tracing
@@ -29,8 +31,22 @@ async fn main() {
 
     info!("Initialized tracing");
 
-    // Login with a bot token from the environment
-    let token = "";
+    let config: aws_config::SdkConfig = aws_config::load_from_env().await;
+    let secretsmanager_client = aws_sdk_secretsmanager::Client::new(&config);
+    let token = secretsmanager_client
+        .get_secret_value()
+        .secret_id(DISCORD_SECRET_ID)
+        .send()
+        .await
+        .map_or_else(
+            |err| {
+                error!(error = %err, "Failed to fetch the secret.");
+                "bad_token".to_owned()
+            }, 
+            |token| token.secret_string().unwrap().to_owned()
+        );
+
+    info!("Fetched discord bot token");
 
     let framework = StandardFramework::new()
         .normal_message(message)
@@ -48,6 +64,16 @@ async fn main() {
         let mut data = client.data.write().await;
 
         data.insert::<AcceptedChannels>(Arc::new(Mutex::new(HashMap::default())));
+    }
+
+    let s3_client = aws_sdk_s3::Client::new(&config);
+
+    {
+        let mut data = client.data.write().await;
+        data.insert::<AwsClients>(Arc::new(AwsClientsContainer {
+            s3: s3_client,
+            secrets_manager: secretsmanager_client
+        }));
     }
 
     info!("Initialized shared state");
