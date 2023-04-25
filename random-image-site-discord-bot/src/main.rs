@@ -58,6 +58,9 @@ async fn main() {
         .await
         .expect("Error creating client");
 
+    let secretsmanager_client = aws_sdk_secretsmanager::Client::new(&config);
+
+
     // Put in its own block to keep the write lock that data has open for as little time as possible
     // Idea is to minimize chance of deadlocks. Don't think its necessary here, think its just best practice
     { 
