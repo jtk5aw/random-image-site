@@ -6,5 +6,9 @@
   "hosted-zone:account=961305444646:domainName=jtken.com:region=us-west-1": {
     "Id": "/hostedzone/Z027825633S39W470Z6LM",
     "Name": "jtken.com."
-  }
+  },
+  "availability-zones:account=961305444646:region=us-west-1": [
+    "us-west-1a",
+    "us-west-1c"
+  ]
 }
