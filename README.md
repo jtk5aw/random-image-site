@@ -2,7 +2,7 @@
 Static react site that displays one random image per day. Backend is API Gateway backed by Rust Lambdas. 
 
 ### Where do the images come from? 
-The images are manually uploaded to an S3 bucket. They are not pulled from any sort of API. **Future Plans**: Make it easier to upload images that will be added to the possible pool to be selected from rather than relying on manual bulk uploads to S3. Initially the plan is to do this with a Discord bot. 
+The images are uploaded to an S3 bucket. Some images were manually uploaded but the expected way going forwards is to upload them via a Discord Bot. There is a specific discord server and channel that I have set up that when an image is sent it is copied into S3. Once this copy occurs it is eligible to be selected as the random image of the day. Next steps would be allowing the other user of the app to upload images as well by inviting them to the discord server and explaining how the process works. Beyond that there is the potential to maybe make an app to simplify the upload process. 
 
 ### What does one image per day mean? 
 The first time a call is made to the API endpoint for fetching an image a random one is selected (more on this in a moment)
