@@ -74,7 +74,7 @@ impl AcceptedChannelsTrait for AcceptedChannels {
 }
 
 /**
- * Shared AWS clients
+ * Shared AWS clients and associated constants
  */
 pub struct AwsClientsContainer {
     pub s3: aws_sdk_s3::Client,
@@ -86,3 +86,6 @@ pub struct AwsClients;
 impl TypeMapKey for AwsClients {
     type Value = Arc<AwsClientsContainer>;
 }
+
+// TODO: Make this an env variable
+pub const IMAGE_BUCKET_NAME: &str = "get-image-lambda-bucket";

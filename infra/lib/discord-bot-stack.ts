@@ -4,6 +4,14 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
+/**
+ * Stack for setting up infra to run the discord bot. 
+ * 
+ * Right now whenever this runs (I think) it wipes the EC2 instance. 
+ * Since I'm putting the file on the host manually right now that's not ideal. 
+ * Could figure out how to automatically deploy the code to the host, but that doesn't seem
+ * worth the effort. Would rather run this on Fargate or something anyways
+ */
 export class DiscordBotStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -60,7 +68,10 @@ export class DiscordBotStack extends cdk.Stack {
     // Add the necessary policies
     botInstance.addToRolePolicy(new iam.PolicyStatement({
         actions: ['s3:*'],
-        resources: [`arn:aws:s3:::${bucket_name}`, `arn:aws:s3:::${bucket_name}/`]
+        resources: [
+            `arn:aws:s3:::${bucket_name}*`, 
+            `arn:aws:s3:::${bucket_name}/*`
+        ]
     }));
 
     botInstance.addToRolePolicy(new iam.PolicyStatement({

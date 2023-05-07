@@ -1,8 +1,12 @@
 use std::collections::{HashMap};
+use std::io::{Error as StdIoError};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use aws_sdk_s3::error::PutObjectError;
+use aws_sdk_s3::types::{SdkError as S3SdkError, ByteStream};
 use image::{DynamicImage, ImageError};
-use random_image_site_discord_bot::type_map_keys::{AcceptedChannels, AcceptedChannelsTrait, AwsClients, AwsClientsContainer};
+use random_image_site_discord_bot::type_map_keys::{AcceptedChannels, AcceptedChannelsTrait, AwsClients, AwsClientsContainer, IMAGE_BUCKET_NAME};
 use reqwest::{Error as ReqwestError};
 use serenity::{async_trait, Client};
 use serenity::client::EventHandler;
@@ -11,6 +15,7 @@ use serenity::model::channel::Message;
 use serenity::framework::standard::{StandardFramework, CommandResult};
 use serenity::prelude::{GatewayIntents, Context};
 use tracing::{info_span, info, error, instrument};
+use uuid::Uuid;
 
 #[group]
 struct Images;
@@ -163,7 +168,7 @@ pub enum ProcessingError {}
 
 #[instrument(skip_all)]
 async fn process_image(ctx: &Context, msg: &Message, image: DynamicImage) {
-    match upload_image(image).await {
+    match upload_image(ctx, image).await {
         Ok(()) => {
             info!("Processed the image successfully");
             if let Err(err) = msg.reply(ctx, "This iamge was successfuly processed!").await {
@@ -181,7 +186,9 @@ async fn process_image(ctx: &Context, msg: &Message, image: DynamicImage) {
 
 #[derive(Debug)]
 pub enum UploadError {
-    WriteError(ImageError)
+    WriteError(ImageError),
+    S3Error(S3SdkError<PutObjectError>),
+    IoError(StdIoError),
 }
 
 impl From<ImageError> for UploadError {
@@ -190,9 +197,53 @@ impl From<ImageError> for UploadError {
     }
 }
 
-async fn upload_image(image: DynamicImage) -> Result<(), UploadError> {
-    // Figure out how to pass in S3 Client
-    // should be able to be used across threads so not sure how that will work with TypeValueKey
-    // That might honestly be overkill, might be possible to share clients another way? 
-    Ok(image.save("test_image.jpg")?)
+impl From<S3SdkError<PutObjectError>> for UploadError {
+    fn from(err: S3SdkError<PutObjectError>) -> Self {
+        Self::S3Error(err)
+    }
+}
+
+impl From<StdIoError> for UploadError {
+    fn from(err: StdIoError) -> Self {
+        Self::IoError(err)
+    }
+}
+
+async fn upload_image(ctx: &Context, dynamic_image: DynamicImage) -> Result<(), UploadError> {
+    // Get the S3 Client to be used for writing
+    let s3_client = {
+        let data_read = ctx.data.read().await;
+        let aws_clients_container = data_read.get::<AwsClients>().expect("Expected AwsClientsContainer in TypeMap");
+        aws_clients_container.s3.clone()
+    };
+
+    info!("Successfully grabbed the S3 Client");
+
+    // Get the file in JPG format as bytes
+    let uuid_str = Uuid::new_v4().to_string();
+
+    let file_name = format!("discord_{}.jpg", uuid_str);
+    dynamic_image.save(&file_name)?;
+    // TODO: Remove this unwrap
+    let body = ByteStream::from_path(Path::new(&file_name)).await.unwrap();
+
+    info!(image_name = &file_name, "Sucessfully converted the image to JPG and got the image as bytes.");
+
+    // Attempt to upload to S3
+    let put_object_output = s3_client.put_object()
+        .bucket(IMAGE_BUCKET_NAME)
+        .key(&file_name)
+        .body(body)
+        .send()
+        .await;
+
+    // Attempt to delete the file before reporting the result of the S3 write
+    tokio::fs::remove_file(&file_name).await?;
+
+    info!("Successfully deleted the file from disk. Does NOT guarantee the file was written to S3");
+
+    match put_object_output {
+        Ok(_) => Ok(()),
+        Err(error) => Err(UploadError::from(error))
+    }
 }
