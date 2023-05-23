@@ -233,6 +233,7 @@ async fn upload_image(ctx: &Context, dynamic_image: DynamicImage) -> Result<(), 
     let put_object_output = s3_client.put_object()
         .bucket(IMAGE_BUCKET_NAME)
         .key(&file_name)
+        .content_type("image/jpeg")
         .body(body)
         .send()
         .await;
