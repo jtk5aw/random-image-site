@@ -20,6 +20,7 @@ export class InfraStack extends cdk.Stack {
     const user_reaction_table_primary_key = 'date';
     const user_reaction_table_sort_key = 'user'
     const web_app_domain = 'jtken.com';
+    const image_domain = `images.${web_app_domain}`;
     
     // Storage resources
     const bucket = new s3.Bucket(this, 'TestBucket', {
@@ -70,11 +71,53 @@ export class InfraStack extends cdk.Stack {
       user_reaction_table_sort_key
     });
 
-    // Frontend 
+
+    // Shared between the front-end and the Image CDN
+
     //Get The Hosted Zone
     const zone = route53.HostedZone.fromLookup(this, 'Zone', {
       domainName: web_app_domain,
     });
+
+    // Image CDN //
+
+    const imageCertificate = new acm.DnsValidatedCertificate(this, 'ImageCertificate', {
+      domainName: image_domain,
+      hostedZone: zone,
+      region: 'us-east-1'
+    });
+
+    const imageDistribution = new cloudfront.CloudFrontWebDistribution(this, 'ImageDistribution', {
+      viewerCertificate: cloudfront.ViewerCertificate.fromAcmCertificate(imageCertificate, {
+        securityPolicy: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+        aliases: [image_domain],
+        sslMethod: cloudfront.SSLMethod.SNI
+      }),
+      originConfigs: [{
+        customOriginSource: {
+          domainName: bucket.bucketDomainName,
+          originProtocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY
+        },
+        behaviors: [{
+          isDefaultBehavior: true
+        }]
+      }]
+    });
+
+    new route53.ARecord(this, 'ImageRecord', {
+      recordName: image_domain,
+      target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(imageDistribution)),
+      zone
+    });
+
+    /**
+     * The above isn't enough and will lead to access denied errors over and over again. 
+     * Since there isn't a way to do the following with CDK right now I just did it manually. 
+     * If its possible to do with CDK in the future that is obviously better. 
+     * https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html
+     */
+
+    // Frontend //
 
     //Create S3 Bucket for our website
     const siteBucket = new s3.Bucket(this, 'SiteBucket', {
