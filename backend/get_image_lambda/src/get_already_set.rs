@@ -4,7 +4,6 @@ use log::info;
 
 use aws_sdk_s3::error::GetObjectError;
 use aws_sdk_s3::types::{SdkError as S3SdkError};
-use aws_sdk_s3::output::GetObjectOutput;
 
 #[derive(Debug)]
 pub enum GetAlreadySetObjectError {
@@ -40,13 +39,11 @@ impl From<String> for GetAlreadySetObjectError {
 }
 
 pub async fn get_already_set_object(
-    bucket_name: &str,
     table_name: &str,
     table_primary_key: &str,
     date_string: &str,
     dynamodb_client: &aws_sdk_dynamodb::Client,
-    s3_client: &aws_sdk_s3::Client
-) -> Result<GetObjectOutput, GetAlreadySetObjectError> {
+) -> Result<String, GetAlreadySetObjectError> {
 
     info!("Check for already set object for {}", date_string);
 
@@ -64,14 +61,6 @@ pub async fn get_already_set_object(
             att_val.to_owned()
         })?;
 
-    s3_client
-        .get_object()
-        .bucket(bucket_name)
-        .key(object_key.to_owned())
-        .send()
-        .await
-        .map_err(|err| {
-            GetAlreadySetObjectError::GetObjectFalure(Box::new(err))
-        })
+    Ok(object_key.to_owned())
 }
 

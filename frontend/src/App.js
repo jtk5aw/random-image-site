@@ -21,10 +21,10 @@ export default function App() {
 function Page() {
   // Fetch the current image
   const todaysImageResponse = useQuery({
-    queryKey: ['imageString'],
+    queryKey: ['imageUrl'],
     queryFn: () =>
       axios.get(TODAYS_IMAGE_ENDPOINT)
-        .then((res) => res.data)
+        .then((res) => res.data.url)
   });
 
   // Fetch todays metadata
@@ -93,7 +93,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
       <AppBody 
             todaysImageLoading={todaysImageResponse.isLoading}
             todaysMetadataLoading={todaysMetadataResponse.isLoading}
-            imageString={todaysImageResponse.data} 
+            imageUrl={todaysImageResponse.data} 
             currReaction={currReaction}
             currReactionCounts={currReactionCounts}
             currUuid={currUuid}
@@ -102,13 +102,13 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   );
 }
 
-const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageString, currReaction, currReactionCounts, currUuid, onEmojiClick}) => (
+const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, currReaction, currReactionCounts, currUuid, onEmojiClick}) => (
   <div className="App-Body">
       {
         todaysImageLoading || todaysMetadataLoading
           ? <Loading /> 
           : <Successful 
-              imageString={imageString}
+              imageUrl={imageUrl}
               currUuid={currUuid}
               currReaction={currReaction}
               currReactionCounts={currReactionCounts}
@@ -117,9 +117,9 @@ const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageString, currRe
   </div>
 );
 
-const Successful = ({imageString, currReaction, currReactionCounts, onEmojiClick}) => {
+const Successful = ({imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
   return <div>
-    <img src={`data:image/jpg;base64,${imageString}`} className="Todays-Image" alt="todays pic" />
+    <img src={`${imageUrl}`} className="Todays-Image" alt="todays pic" />
     <ReactionCounts currReactionCounts={currReactionCounts} />
     <Selector currReaction={currReaction} onSelect={onEmojiClick} />
   </div>

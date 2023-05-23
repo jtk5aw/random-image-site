@@ -8,7 +8,7 @@ pub struct UserReactionDao<'a> {
     pub table_name: &'a str,
     pub primary_key: &'a str,
     pub sort_key: &'a str,
-    pub dynamodb_client: Client
+    pub dynamodb_client: &'a Client
 }
 
 #[derive(Debug)]

@@ -6,7 +6,6 @@ use log::{info, error};
 
 use aws_sdk_s3::error::{GetObjectError, ListObjectsError};
 use aws_sdk_s3::types::{SdkError as S3SdkError};
-use aws_sdk_s3::output::GetObjectOutput;
 use aws_sdk_dynamodb::model::{AttributeValue, KeysAndAttributes};
 use aws_sdk_dynamodb::error::{BatchGetItemError, PutItemError};
 use aws_sdk_dynamodb::types::SdkError as DynamoDbSdkError;
@@ -51,7 +50,7 @@ pub async fn select_and_set_random_s3_object(
     date_string: &str,
     dynamodb_client: &aws_sdk_dynamodb::Client,
     s3_client: &aws_sdk_s3::Client
-) -> Result<GetObjectOutput, SelectAndSetRandomObjectError> {
+) -> Result<String, SelectAndSetRandomObjectError> {
 
     let set_of_recents = match get_recent_images(table_name, table_primary_key, dynamodb_client).await {
         Ok(set) => set,
@@ -81,15 +80,7 @@ pub async fn select_and_set_random_s3_object(
 
     info!("Successfully wrote random object to dynamodb");
 
-    s3_client
-        .get_object()
-        .bucket(bucket_name)
-        .key(random_selected_object_key)
-        .send()
-        .await
-        .map_err(|err| {
-            SelectAndSetRandomObjectError::GetObjectFailure(err)
-        })
+    Ok(random_selected_object_key.to_owned())
 }
 
 #[derive(Debug)]

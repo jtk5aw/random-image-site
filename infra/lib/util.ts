@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 
 interface ApiProps {
     bucket_name: string;
+    image_domain: string;
     table_name: string;
     table_primary_key: string;
     user_reaction_table_name: string;
@@ -30,6 +31,7 @@ export function constructApi(scope: Construct, props: ApiProps) {
         environment: {
           RUST_BACKTRACE: '1',
           BUCKET_NAME: props.bucket_name,
+          IMAGE_DOMAIN: props.image_domain,
           TABLE_NAME: props.table_name,
           TABLE_PRIMARY_KEY: props.table_primary_key,
         }

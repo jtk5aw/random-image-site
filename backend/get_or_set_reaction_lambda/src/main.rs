@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::Local;
 use get_or_set_reaction_lambda::user_reaction_dao::{UserReactionDao, UserReactionDaoError};
 use http::Method;
+use aws_sdk_dynamodb::{Client as DynamoDbClient};
 use lambda_utils::{aws_sdk::{ApiGatewayProxyResponseWithoutHeaders}, models::{Reactions, ReactionError}};
 use log::{error, info, LevelFilter};
 use serde::{Deserialize, Serialize};
@@ -13,7 +14,7 @@ use aws_lambda_events::{
     encodings::Body,
     event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
 };
-use lambda_runtime::handler_fn;
+use lambda_runtime::{service_fn, LambdaEvent};
 use uuid::Uuid;
 
 #[tokio::main]
@@ -24,8 +25,12 @@ async fn main() -> Result<(), lambda_runtime::Error> {
         .init()
         .unwrap();
 
-    let func = handler_fn(handler);
-    lambda_runtime::run(func).await?;
+    let environment_variables = EnvironmentVariables::build();
+    let aws_clients = AwsClients::build().await;
+
+    lambda_runtime::run(service_fn(|request: LambdaEvent<ApiGatewayProxyRequest>| {
+        handler(&environment_variables, &aws_clients, request.payload)
+    })).await?;
 
     Ok(())
 }
@@ -38,23 +43,17 @@ pub enum HandlerError {
 }
 
 async fn handler(
+    environment_variables: &EnvironmentVariables,
+    aws_clients: &AwsClients,
     req: ApiGatewayProxyRequest,
-    _ctx: lambda_runtime::Context,
 ) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
     info!("handling a request: {:?}", req);
 
-    let environment_variables = EnvironmentVariables::build();
-
-    // No extra configuration is needed as long as your Lambda has
-    // the necessary permissions attached to its role.
-    let config = aws_config::load_from_env().await;
-
-    let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);
     let user_reaction_dao = UserReactionDao {
         table_name: &environment_variables.user_reaction_table_name,
         primary_key: &environment_variables.user_reaction_table_primary_key,
         sort_key: &environment_variables.user_reaction_table_sort_key,
-        dynamodb_client
+        dynamodb_client: &aws_clients.dynamodb_client
     };
 
     let today_as_string = Local::now().format("%Y-%m-%d").to_string();
@@ -252,6 +251,24 @@ async fn handler_put(
         is_base_64_encoded: false,
     }
     .build_full_response())
+}
+
+struct AwsClients {
+    dynamodb_client: DynamoDbClient
+}
+
+impl AwsClients {
+    async fn build() -> AwsClients {
+        // No extra configuration is needed as long as your Lambda has
+        // the necessary permissions attached to its role.
+        let config = aws_config::load_from_env().await;
+
+        let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);
+
+        AwsClients {
+            dynamodb_client
+        }
+    }
 }
 
 /** Environment Variables */

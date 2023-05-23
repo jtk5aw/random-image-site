@@ -64,6 +64,7 @@ export class InfraStack extends cdk.Stack {
     // Create the API
     constructApi(this, {
       bucket_name,
+      image_domain,
       table_name,
       table_primary_key,
       user_reaction_table_name,
