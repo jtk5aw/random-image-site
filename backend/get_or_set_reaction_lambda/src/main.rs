@@ -215,11 +215,10 @@ async fn handler_put(
 
     let uuid = &body.uuid;
     let reaction = Reactions::get_reaction(&body.reaction)?;
-    let reaction_string = reaction.to_string();
 
     // Set the reaction
     let old_reaction = user_reaction_dao.set_reaction(
-        today_as_string, uuid, &reaction_string
+        today_as_string, uuid, &reaction
     ).await?;
 
     info!("Request to update reaction completed. The old reaction was {}", old_reaction);
@@ -232,7 +231,7 @@ async fn handler_put(
     let numeric_counts = user_reaction_dao.update_counts(
         today_as_string, 
         &old_reaction, 
-        &reaction_string
+        &reaction
     ).await?;
     
     info!("The counts are: {:?}", numeric_counts);

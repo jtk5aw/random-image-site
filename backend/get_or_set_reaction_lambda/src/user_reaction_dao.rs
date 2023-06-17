@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use aws_sdk_dynamodb::{Client, model::{AttributeValue, ReturnValue}};
-use lambda_utils::{aws_sdk::{KeyAndAttribute, DynamoDbUtil, DynamoDbUtilError, KeyAndAttributeName}, models::Reactions};
+use lambda_utils::{aws_sdk::{KeyAndAttribute, DynamoDbUtil, DynamoDbUtilError, KeyAndAttributeName}, models::{Reactions, ReactionError}};
 use log::{info, warn, error};
 
 pub struct UserReactionDao<'a> {
@@ -15,6 +15,7 @@ pub struct UserReactionDao<'a> {
 pub enum UserReactionDaoError {
     DynamoDbError(DynamoDbUtilError),
     AttributeValueParsingError(AttributeValue),
+    ReactionConversionError(ReactionError),
     ManualError(String)
 }
 
@@ -27,6 +28,12 @@ impl From<DynamoDbUtilError> for UserReactionDaoError {
 impl From<AttributeValue> for UserReactionDaoError {
     fn from(err: AttributeValue) -> Self {
         Self::AttributeValueParsingError(err)
+    }
+}
+
+impl From<ReactionError> for UserReactionDaoError {
+    fn from(err: ReactionError) -> Self {
+        Self::ReactionConversionError(err)
     }
 }
 
@@ -86,6 +93,9 @@ impl UserReactionDao<'_> {
     /// date. This will overwrite the previous reaction if it exists and return the old reaction as
     /// a string. 
     /// 
+    /// Also will only write the reaction if it is a current active reaction. Any deprecated reactions
+    /// will be ignored
+    /// 
     /// # Arguments
     /// * `today_as_string` - The date as a string "YYYY-MM-DD"
     /// * `curr_uuid` - The Users UUID
@@ -99,8 +109,11 @@ impl UserReactionDao<'_> {
         &self,
         today_as_string: &str,
         curr_uuid: &str,
-        new_reaction: &str,
-    ) -> Result<String, UserReactionDaoError> {
+        new_reaction: &Reactions,
+    ) -> Result<Reactions, UserReactionDaoError> {
+        // Return an error if the provided reaction is deprecated
+        new_reaction.is_active().then_some(()).ok_or("The provided reaction is deprecated".to_owned())?;
+
         let keys_and_attributes = self.build_user_reaction_key_and_attribute(
             today_as_string,
             curr_uuid,
@@ -108,7 +121,7 @@ impl UserReactionDao<'_> {
     
         let expression_attribute_values = vec![KeyAndAttribute {
             key: ":new_reaction",
-            attribute: AttributeValue::S(new_reaction.to_owned()),
+            attribute: AttributeValue::S(new_reaction.to_string()),
         }];
     
         // Updates the reaction
@@ -130,7 +143,7 @@ impl UserReactionDao<'_> {
             Err(err) => Self::handle_old_reaction_error(err)
         }?;
 
-        Ok(old_reaction)
+        Ok(Reactions::get_reaction(&old_reaction)?)
     }
 
     ///
@@ -261,11 +274,14 @@ impl UserReactionDao<'_> {
     pub async fn update_counts(
         &self,
         today_as_string: &str,
-        old_reaction: &str,
-        new_reaction: &str
+        old_reaction: &Reactions,
+        new_reaction: &Reactions
     ) -> Result<HashMap<String, String>, UserReactionDaoError> {
+        let old_reaction_str = old_reaction.to_string();
+        let new_reaction_str = new_reaction.to_string();
+
         // If the reactions are the same, return early
-        if old_reaction == new_reaction {
+        if old_reaction_str == new_reaction_str {
             let curr_counts = self.get_counts(
                 today_as_string
             ).await?;
@@ -281,11 +297,11 @@ impl UserReactionDao<'_> {
         let counts_expression_attribute_names = Some(vec![
             KeyAndAttributeName {
                 key: "#new_reaction",
-                attribute_name: new_reaction,
+                attribute_name: &new_reaction_str,
             },
             KeyAndAttributeName {
                 key: "#old_reaction",
-                attribute_name: old_reaction,
+                attribute_name: &old_reaction_str,
             },
         ]);
     
@@ -338,7 +354,7 @@ impl UserReactionDao<'_> {
 
 }
 
-/** Generatl helper functions that don't require state */
+/** Generate helper functions that don't require state */
 fn generate_numeric_counts(
     retrieved_counts: &HashMap<String, AttributeValue>
 ) -> HashMap<String, String> {
