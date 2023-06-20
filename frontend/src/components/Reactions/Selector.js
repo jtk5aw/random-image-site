@@ -26,7 +26,7 @@ export const Selector = ({ reactions, currReaction, onSelect }) => {
 }
 
 Selector.defaultProps = {
-  reactions: ['Love', 'Pain','Funny', 'Eesh'],
+  reactions: ['Love', 'Tough','Funny', 'Wow'],
 }
 
 export default Selector
