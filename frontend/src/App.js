@@ -83,12 +83,12 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   }
 
   return (
-    <div className="App">
-      <div className="Title-Header"> 
+    <div className='flex flex-col justify-start pl-2 pr-2 pb-5 items-center min-w-screen min-h-screen text-white bg-black'>
+      <div className='flex justify-between items-center w-screen font-serif p-1 text-4xl'> 
         <p>
           ForMaeov
         </p>
-        <img src={heart} className="Header-Image" alt="Human heart" />
+        <img src={heart} className='text-left bg-black h-20 w-20' alt="Human heart" />
       </div>
       <AppBody 
             todaysImageLoading={todaysImageResponse.isLoading}
@@ -103,7 +103,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
 }
 
 const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, currReaction, currReactionCounts, currUuid, onEmojiClick}) => (
-  <div className="App-Body">
+  <div className='flex flex-col align-center justify-center'>
       {
         todaysImageLoading || todaysMetadataLoading
           ? <Loading /> 
@@ -119,7 +119,7 @@ const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, currReact
 
 const Successful = ({imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
   return <div>
-    <img src={`${imageUrl}`} className="Todays-Image" alt="todays pic" />
+    <img src={`${imageUrl}`} className='object-scale-down max-w-50 max-h-50' alt="todays pic" />
     <ReactionCounts currReactionCounts={currReactionCounts} />
     <Selector currReaction={currReaction} onSelect={onEmojiClick} />
   </div>

@@ -8,10 +8,10 @@ import { orderAndFilterReactions } from './dataUtils';
 export const Selector = ({ reactions, currReaction, onSelect }) => {
 
   return (
-    <div className="Todays-Reaction">
+    <div className='flex justify-center'>
       { orderAndFilterReactions(reactions, (reaction) => {
         return (
-          <div className="Todays-Icons" key={ reaction }>
+          <div className='flex justify-center' key={ reaction }>
             <SelectorEmoji
               selected = { reaction === currReaction }
               icon={ getIcon(reaction) }
