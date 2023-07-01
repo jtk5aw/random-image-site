@@ -1,10 +1,11 @@
-use aws_lambda_events::event::cloudwatch_events::CloudWatchEvent;
-use chrono::{NaiveDate, Duration};
+use chrono::{Duration, DateTime};
+use daily_setup_lambda::select_and_set::select_and_set_random_s3_object;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
 use aws_sdk_dynamodb::{Client as DynamoDbClient};
 use aws_sdk_s3::{Client as S3Client};
+use lambda_utils::user_reaction_dao::UserReactionDao;
 use serde::Deserialize;
-use tracing::{info, instrument};
+use tracing::{info, error};
 
 #[derive(Deserialize, Debug)]
 struct Request {
@@ -37,26 +38,45 @@ async fn function_handler(
     // Extract some useful information from the request
     info!(event = ?event, "The event passed into the lambda is");
 
-    let tomorrow_as_date = NaiveDate::parse_from_str(&event.time, "%Y-%m-%d")? + Duration::days(1);
+    let tomorrow_as_date = DateTime::parse_from_rfc3339(&event.time)? + Duration::days(1);
     let tomorrow_as_date_string = tomorrow_as_date.format("%Y-%m-%d").to_string();
+
+    let user_reaction_dao = UserReactionDao {
+        table_name: &environment_variables.user_reaction_table_name,
+        primary_key: &environment_variables.user_reaction_table_primary_key,
+        sort_key: &environment_variables.user_reaction_table_sort_key,
+        dynamodb_client: &aws_clients.dynamodb_client
+    };
 
     info!(tomorrow = tomorrow_as_date_string, "Tomorrow is: ");
 
-    // select_and_set_random_s3_object(&environment_variables.bucket_name, &environment_variables.table_name, &environment_variables.table_primary_key, 
-    //     &today_as_string, dynamodb_client, s3_client)
-    // .await
-    // .map_err(|err| {
-    //     error!("Failed to get a random object from the bucket due to the following: {:?}", err);
-    //     ApiGatewayProxyResponseWithoutHeaders {
-    //         status_code: 500, 
-    //         body: Body::Text(format!("Failed to get random object: {:?}", err)), 
-    //         is_base_64_encoded: false
-    //     }.build_full_response()
-    // });
+    let dynamodb_client = &aws_clients.dynamodb_client;
+    let s3_client = &aws_clients.s3_client;
+
+    // Crashes the lambda and retries if this fails
+    select_and_set_random_s3_object(
+        &environment_variables.bucket_name, 
+        &environment_variables.table_name, 
+        &environment_variables.table_primary_key, 
+        &tomorrow_as_date_string, 
+        dynamodb_client, 
+        s3_client)
+    .await
+    .map_err(|err| {
+        error!("Failed to get a random object from the bucket due to the following: {:?}", err);
+    })
+    .unwrap();
+
+    // Make request to set up counts. Lambda should also crash if this fails too
+    // (May lead to image for tomorrow getting set twice but thatn's not a big deal)
+    user_reaction_dao.setup_counts(&tomorrow_as_date_string)
+    .await
+    .unwrap();
 
     Ok(())
 }
 
+#[derive(Debug)]
 struct EnvironmentVariables {
     bucket_name: String,
     table_name: String,
@@ -92,6 +112,7 @@ impl EnvironmentVariables {
     }
 }
 
+#[derive(Debug)]
 struct AwsClients {
     s3_client: S3Client,
     dynamodb_client: DynamoDbClient

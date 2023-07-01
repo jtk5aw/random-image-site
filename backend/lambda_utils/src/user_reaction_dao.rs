@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use aws_sdk_dynamodb::{Client, types::{AttributeValue, ReturnValue}};
-use lambda_utils::{aws_sdk::{KeyAndAttribute, DynamoDbUtil, DynamoDbUtilError, KeyAndAttributeName}, models::{Reactions, ReactionError}};
 use log::{info, warn, error};
+
+use crate::{aws_sdk::{DynamoDbUtil, DynamoDbUtilError, KeyAndAttribute, KeyAndAttributeName}, models::{Reactions, ReactionError}};
 
 pub struct UserReactionDao<'a> {
     pub table_name: &'a str,

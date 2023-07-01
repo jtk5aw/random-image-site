@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
 use chrono::Local;
-use get_or_set_reaction_lambda::user_reaction_dao::{UserReactionDao, UserReactionDaoError};
 use http::Method;
 use aws_sdk_dynamodb::{Client as DynamoDbClient};
-use lambda_utils::{aws_sdk::{ApiGatewayProxyResponseWithoutHeaders}, models::{Reactions, ReactionError}};
+use lambda_utils::{aws_sdk::{ApiGatewayProxyResponseWithoutHeaders}, models::{Reactions, ReactionError}, user_reaction_dao::{UserReactionDao, UserReactionDaoError}};
 use log::{error, info, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Error as SerdeJsonError;
@@ -222,10 +221,6 @@ async fn handler_put(
     ).await?;
 
     info!("Request to update reaction completed. The old reaction was {}", old_reaction);
-
-    // Make request to set up counts 
-    // TODO: Move this to the select_and_set
-    user_reaction_dao.setup_counts(today_as_string).await?;
 
     // Make request to update/get the counts
     let numeric_counts = user_reaction_dao.update_counts(
