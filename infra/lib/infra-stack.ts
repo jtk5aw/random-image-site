@@ -6,7 +6,7 @@ import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
-import { constructApi } from './util';
+import { constructApi, constructEvents } from './util';
 
 export class InfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -60,6 +60,16 @@ export class InfraStack extends cdk.Stack {
       minCapacity: 1, 
       maxCapacity: 3,
     });
+
+    // Create event driven architecture
+    constructEvents(this, {
+      bucket_name,
+      table_name,
+      table_primary_key,
+      user_reaction_table_name,
+      user_reaction_table_primary_key,
+      user_reaction_table_sort_key
+    })
 
     // Create the API
     constructApi(this, {

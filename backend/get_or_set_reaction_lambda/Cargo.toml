@@ -18,11 +18,11 @@ base64 = "0.20.0"
 http = "0.2.4"
 uuid = {version="1.3.0", features=["v4", "fast-rng", "macro-diagnostics"]}
 # NOTE: the following crate is not part of the SDK, but it is maintained by AWS.
-lambda_runtime = "0.8"
-aws-config = "0.52.0"
-aws_lambda_events = "0.5.0"
+lambda_runtime = "0.8.1"
+aws-config = "0.55.3"
+aws_lambda_events = "0.10.0"
 # AWS SDKs
-aws-sdk-dynamodb = "0.22.0"
+aws-sdk-dynamodb = "0.28.0"
 
 # Local dependencies
 lambda_utils = { path = "../lambda_utils", version = "0.1.0" }

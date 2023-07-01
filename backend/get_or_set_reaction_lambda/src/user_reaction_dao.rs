@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use aws_sdk_dynamodb::{Client, model::{AttributeValue, ReturnValue}};
+use aws_sdk_dynamodb::{Client, types::{AttributeValue, ReturnValue}};
 use lambda_utils::{aws_sdk::{KeyAndAttribute, DynamoDbUtil, DynamoDbUtilError, KeyAndAttributeName}, models::{Reactions, ReactionError}};
 use log::{info, warn, error};
 

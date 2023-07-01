@@ -1,10 +1,6 @@
 use std::collections::HashMap;
 
-use aws_sdk_dynamodb::client::fluent_builders::{GetItem, UpdateItem};
-use aws_sdk_dynamodb::error::UpdateItemError;
-use aws_sdk_dynamodb::model::ReturnValue;
-use aws_sdk_dynamodb::{Client as DynamoDbClient, error::GetItemError, model::AttributeValue};
-use aws_sdk_dynamodb::types::SdkError as DynamoDbSdkError;
+use aws_sdk_dynamodb::{Client as DynamoDbClient, types::{AttributeValue, ReturnValue}, operation::{get_item::{GetItemError, builders::GetItemFluentBuilder}, update_item::{UpdateItemError, builders::UpdateItemFluentBuilder}}, error::SdkError as DynamoDbSdkError};
 use aws_lambda_events::{encodings::Body, event::apigw::ApiGatewayProxyResponse};
 use http::header::{HeaderMap};
 use async_trait::async_trait;
@@ -28,7 +24,7 @@ impl ApiGatewayProxyResponseWithoutHeaders {
             headers: create_cross_origin_headers(), 
             multi_value_headers: HeaderMap::new(), 
             body: Some(self.body), 
-            is_base64_encoded: Some(self.is_base_64_encoded)
+            is_base64_encoded: self.is_base_64_encoded
         }
     }
 }
@@ -188,7 +184,7 @@ trait DynamoDbSend {
 }
 
 #[async_trait]
-impl DynamoDbSend for GetItem {
+impl DynamoDbSend for GetItemFluentBuilder {
     async fn send_request(self) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
         let get_item_result = self
             .send()
@@ -203,7 +199,7 @@ impl DynamoDbSend for GetItem {
 }
 
 #[async_trait]
-impl DynamoDbSend for UpdateItem {
+impl DynamoDbSend for UpdateItemFluentBuilder {
     async fn send_request(self) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
         let update_item_result = self
             .send()

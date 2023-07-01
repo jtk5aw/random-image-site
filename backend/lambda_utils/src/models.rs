@@ -1,6 +1,6 @@
 use std::{fmt, str::FromStr, collections::HashMap};
 
-use aws_sdk_dynamodb::model::AttributeValue;
+use aws_sdk_dynamodb::types::AttributeValue;
 use strum::{IntoEnumIterator, ParseError, EnumProperty};
 use strum_macros::{EnumString, EnumIter, EnumProperty};
 

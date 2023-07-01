@@ -1,9 +1,9 @@
-use aws_sdk_dynamodb::model::AttributeValue;
+use aws_sdk_dynamodb::types::AttributeValue;
+use aws_sdk_s3::operation::get_object::GetObjectError;
+use aws_sdk_s3::error::{SdkError as S3SdkError};
 use lambda_utils::aws_sdk::{DynamoDbUtilError, DynamoDbUtil};
 use log::info;
 
-use aws_sdk_s3::error::GetObjectError;
-use aws_sdk_s3::types::{SdkError as S3SdkError};
 
 #[derive(Debug)]
 pub enum GetAlreadySetObjectError {

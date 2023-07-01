@@ -1,15 +1,12 @@
 use std::collections::{HashSet, HashMap};
 
-use aws_sdk_s3::model::Object;
 use chrono::{Local, DateTime, Duration};
 use log::{info, error};
 
-use aws_sdk_s3::error::{GetObjectError, ListObjectsError};
-use aws_sdk_s3::types::{SdkError as S3SdkError};
-use aws_sdk_dynamodb::model::{AttributeValue, KeysAndAttributes};
-use aws_sdk_dynamodb::error::{BatchGetItemError, PutItemError};
-use aws_sdk_dynamodb::types::SdkError as DynamoDbSdkError;
+use aws_sdk_s3::{error::{SdkError as S3SdkError}, operation::{get_object::GetObjectError, list_objects::ListObjectsError}, types::Object};
+use aws_sdk_dynamodb::{error::SdkError as DynamoDbSdkError, operation::{batch_get_item::BatchGetItemError, put_item::PutItemError}, types::{KeysAndAttributes, AttributeValue}};
 use rand::seq::SliceRandom;
+use tracing::{log, instrument};
 
 #[derive(Debug)]
 pub enum SelectAndSetRandomObjectError {
@@ -43,6 +40,7 @@ impl From<String> for SelectAndSetRandomObjectError {
     }
 }
 
+#[instrument(skip_all)]
 pub async fn select_and_set_random_s3_object(
     bucket_name: &str,
     table_name: &str,
@@ -101,6 +99,7 @@ impl From<String> for GetRecentImagesError {
     }
 }
 
+#[instrument(skip_all)]
 async fn get_recent_images(
     table_name: &str,
     table_primary_key: &str,
@@ -178,6 +177,7 @@ impl From<String> for SelectRandomObjectError {
     }
 }
 
+#[instrument(skip_all)]
 async fn select_random_s3_object(
     bucket_name: &str,
     set_of_recents: HashSet<String>,
@@ -232,6 +232,7 @@ impl From<String> for SetRandomObjectError {
     }
 }
 
+#[instrument(skip_all)]
 async fn set_random_object_in_s3(
     table_name: &str,
     table_primary_key: &str,

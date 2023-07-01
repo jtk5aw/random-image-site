@@ -131,7 +131,7 @@ async fn handler_get(
 ) -> Result<ApiGatewayProxyResponse, GetHandlerError> {
     let curr_uuid = req
         .query_string_parameters
-        .get("uuid")
+        .first("uuid")
         .map_or(Uuid::new_v4().to_string(), |uuid| uuid.to_owned());
 
     // Get the reaction string
