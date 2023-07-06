@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use aws_sdk_dynamodb::{Client, types::{AttributeValue, ReturnValue}};
 use log::{info, warn, error};
 
-use crate::{aws_sdk::{DynamoDbUtil, DynamoDbUtilError, KeyAndAttribute, KeyAndAttributeName}, models::{Reactions, ReactionError}};
+use crate::{aws_sdk::aws_dynamodb::{DynamoDbUtilError, DynamoDbUtil, KeyAndAttribute, KeyAndAttributeName}, models::{ReactionError, Reactions}};
 
 pub struct UserReactionDao<'a> {
     pub table_name: &'a str,

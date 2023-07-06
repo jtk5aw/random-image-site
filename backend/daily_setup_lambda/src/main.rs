@@ -3,7 +3,7 @@ use daily_setup_lambda::select_and_set::select_and_set_random_s3_object;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
 use aws_sdk_dynamodb::{Client as DynamoDbClient};
 use aws_sdk_s3::{Client as S3Client};
-use lambda_utils::user_reaction_dao::UserReactionDao;
+use lambda_utils::persistence::user_reaction_dao::UserReactionDao;
 use serde::Deserialize;
 use tracing::{info, error};
 

@@ -1,7 +1,7 @@
 use aws_sdk_dynamodb::types::AttributeValue;
 use aws_sdk_s3::operation::get_object::GetObjectError;
 use aws_sdk_s3::error::{SdkError as S3SdkError};
-use lambda_utils::aws_sdk::{DynamoDbUtilError, DynamoDbUtil};
+use lambda_utils::aws_sdk::aws_dynamodb::{DynamoDbUtilError, DynamoDbUtil};
 use log::info;
 
 

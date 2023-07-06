@@ -9,7 +9,7 @@ use lambda_runtime::{service_fn, LambdaEvent};
 use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_lambda_events::encodings::Body;
 
-use lambda_utils::aws_sdk::ApiGatewayProxyResponseWithoutHeaders;
+use lambda_utils::aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders;
 
 use get_image_lambda::get_already_set::get_already_set_object;
 
@@ -33,7 +33,7 @@ async fn main() -> Result<(), lambda_runtime::Error> {
 
 #[derive(Serialize)]
 struct ResponseBody {
-    url: String
+    url: String,
 }
 
 async fn handler(
@@ -76,7 +76,7 @@ async fn handler(
             info!("The currently set object is: {:?}", set_object);
 
             let response_body = ResponseBody {
-                url: format!("https://{}/{}", environment_variables.image_domain, set_object)
+                url: format!("https://{}/{}", environment_variables.image_domain, set_object),
             };
 
             let response = serde_json::to_string(&response_body)?;

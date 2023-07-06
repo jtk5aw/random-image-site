@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::Local;
 use http::Method;
 use aws_sdk_dynamodb::{Client as DynamoDbClient};
-use lambda_utils::{aws_sdk::{ApiGatewayProxyResponseWithoutHeaders}, models::{Reactions, ReactionError}, user_reaction_dao::{UserReactionDao, UserReactionDaoError}};
+use lambda_utils::{aws_sdk::api_gateway::{ApiGatewayProxyResponseWithoutHeaders}, models::{Reactions, ReactionError}, persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError}};
 use log::{error, info, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Error as SerdeJsonError;
