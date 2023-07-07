@@ -1,25 +1,26 @@
 use aws_sdk_dynamodb::{Client as DynamoDbClient};
 use http::Method;
-use log::{LevelFilter, info, error};
-use chrono::Local;
+use chrono::{Local, FixedOffset};
+use lambda_utils::persistence::image_dynamo_dao::ImageDynamoDao;
 use serde::Serialize;
-use simple_logger::SimpleLogger;
 
 use lambda_runtime::{service_fn, LambdaEvent};
 use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_lambda_events::encodings::Body;
 
 use lambda_utils::aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders;
-
-use get_image_lambda::get_already_set::get_already_set_object;
+use tracing::instrument;
+use tracing::log::{info, error};
 
 #[tokio::main]
 async fn main() -> Result<(), lambda_runtime::Error> {
-    SimpleLogger::new()
-        .with_level(LevelFilter::Info)
-        .with_utc_timestamps()
-        .init()
-        .unwrap();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        // disable printing the name of the module in every log line.
+        .with_target(false)
+        // disabling time is handy because CloudWatch will add the ingestion time.
+        .without_time()
+        .init();
 
     let environment_variables = EnvironmentVariables::build();
     let aws_clients = AwsClients::build().await;
@@ -31,11 +32,13 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     Ok(())
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 struct ResponseBody {
     url: String,
+    weekly_recap: Option<Vec<String>>,
 }
 
+#[instrument(skip_all)]
 async fn handler(
     environment_variables: &EnvironmentVariables, 
     aws_clients: &AwsClients, 
@@ -43,22 +46,24 @@ async fn handler(
 ) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
     info!("handling a request: {:?}", req);
 
-    let dynamodb_client = &aws_clients.dynamodb_client;
+    let image_dao = ImageDynamoDao {
+        table_name: &environment_variables.table_name,
+        primary_key: &environment_variables.table_primary_key,
+        dynamodb_client: &aws_clients.dynamodb_client,
+    };
+
 
     if req.http_method != Method::GET {
         panic!("Only handle GET requests should not receive any other request type");
     }
 
-    let today_as_string = Local::now()
-        .format("%Y-%m-%d")
-        .to_string();
+    let today = Local::now().with_timezone(&FixedOffset::east_opt(0).unwrap());
+    let today_as_string = today.format("%Y-%m-%d").to_string();
 
-    info!("Today is {}", today_as_string);
+    info!("Today is {:?}", today);
 
-    let set_object_key = match get_already_set_object(
-            &environment_variables.table_name, 
-            &environment_variables.table_primary_key,
-            &today_as_string, dynamodb_client
+    let set_object_key = match image_dao.get_image(
+            today
         ).await {
             Ok(output) => Ok(output),
             Err(err) => {
@@ -77,6 +82,7 @@ async fn handler(
 
             let response_body = ResponseBody {
                 url: format!("https://{}/{}", environment_variables.image_domain, set_object),
+                ..Default::default()
             };
 
             let response = serde_json::to_string(&response_body)?;

@@ -885,11 +885,11 @@ dependencies = [
  "http",
  "lambda_runtime",
  "lambda_utils",
- "log",
  "serde",
  "serde_json",
- "simple_logger",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1186,11 +1186,15 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "aws-sdk-dynamodb",
+ "aws-sdk-s3",
  "aws_lambda_events",
+ "chrono",
  "http",
  "log",
  "strum",
  "strum_macros",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

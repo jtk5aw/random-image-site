@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use aws_sdk_dynamodb::{Client as DynamoDbClient, types::{AttributeValue, ReturnValue}, operation::{get_item::{GetItemError, builders::GetItemFluentBuilder}, update_item::{UpdateItemError, builders::UpdateItemFluentBuilder}}, error::SdkError as DynamoDbSdkError};
+use aws_sdk_dynamodb::{Client as DynamoDbClient, types::{AttributeValue, ReturnValue, KeysAndAttributes}, operation::{get_item::{GetItemError, builders::GetItemFluentBuilder}, update_item::{UpdateItemError, builders::UpdateItemFluentBuilder}, batch_get_item::{builders::BatchGetItemFluentBuilder, BatchGetItemError}, put_item::{builders::PutItemFluentBuilder, PutItemError}}, error::SdkError as DynamoDbSdkError};
 use async_trait::async_trait;
 
 /** 
@@ -19,6 +19,8 @@ pub struct KeyAndAttributeName<'a> {
 #[derive(Debug)]
 pub enum DynamoDbUtilError {
     GetItemFailure(Box<DynamoDbSdkError<GetItemError>>),
+    BatchGetItemFailure(Box<DynamoDbSdkError<BatchGetItemError>>),
+    PutItemFailure(Box<DynamoDbSdkError<PutItemError>>),
     UpdateItemFailure(Box<DynamoDbSdkError<UpdateItemError>>),
     AttributeValueConversionFailure(AttributeValue),
     LocalError(String),
@@ -27,6 +29,18 @@ pub enum DynamoDbUtilError {
 impl From<DynamoDbSdkError<GetItemError>> for DynamoDbUtilError {
     fn from(err: DynamoDbSdkError<GetItemError>) -> Self {
         Self::GetItemFailure(Box::new(err))
+    }
+}
+
+impl From<DynamoDbSdkError<BatchGetItemError>> for DynamoDbUtilError {
+    fn from(err: DynamoDbSdkError<BatchGetItemError>) -> Self {
+        Self::BatchGetItemFailure(Box::new(err))
+    }
+}
+
+impl From<DynamoDbSdkError<PutItemError>> for DynamoDbUtilError {
+    fn from(err: DynamoDbSdkError<PutItemError>) -> Self {
+        Self::PutItemFailure(Box::new(err))
     }
 }
 
@@ -52,6 +66,18 @@ pub trait DynamoDbUtil {
     ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
 
     async fn get_item_from_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<KeyAndAttribute<'a>>
+    ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
+
+    async fn batch_get_item_from_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<KeyAndAttribute<'a>>
+    ) -> Result<Vec<HashMap<String, AttributeValue>>, DynamoDbUtilError>;
+
+    async fn put_item_from_keys<'a>(
         &self,
         table_name: &str,
         keys_and_attributes: Vec<KeyAndAttribute<'a>>
@@ -104,6 +130,64 @@ impl DynamoDbUtil for DynamoDbClient {
         Ok(get_item_request.send_request().await?)
     }
 
+
+    ///
+    /// Built to only allow for batch requests on a single dynamo table. 
+    /// A refactor would need to be done to fetch from multiple tables in one query.
+    /// 
+    async fn batch_get_item_from_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<KeyAndAttribute<'a>>
+    ) -> Result<Vec<HashMap<String, AttributeValue>>, DynamoDbUtilError> {
+        
+        // Create BatchGetItem object that will be used in the request
+        let mut batch_get_keys_and_attributes = KeysAndAttributes::builder();
+        for key_and_attribute in keys_and_attributes {
+            batch_get_keys_and_attributes = batch_get_keys_and_attributes
+                .keys(HashMap::from([(
+                    key_and_attribute.key.to_owned(),
+                    key_and_attribute.attribute
+                )]));
+        }
+        let batch_get_keys_and_attributes = batch_get_keys_and_attributes.build();
+
+        
+        let batch_get_item_request = self
+            .batch_get_item()
+            .request_items(
+                table_name,
+                batch_get_keys_and_attributes
+            );
+
+        Ok(batch_get_item_request
+            .send_request()
+            .await?
+            .remove(table_name) // Remove transfers ownership so the Vec doesn't have to be copied. Probably not necessary but feels cleaner
+            .ok_or_else(|| "The desired table name returned no responses".to_owned())?
+        )
+    }
+
+    async fn put_item_from_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<KeyAndAttribute<'a>>
+    ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> { 
+    
+        let mut put_item_request = self
+            .put_item()
+            .table_name(table_name);
+        for key_and_attribute in keys_and_attributes {
+            put_item_request = put_item_request.item(
+                key_and_attribute.key,
+                key_and_attribute.attribute
+            );
+        }
+        let put_item_request = put_item_request;
+
+        Ok(put_item_request.send_request().await?)   
+    }
+
     async fn update_item_with_keys<'a>(
         &self,
         table_name: &str,
@@ -152,6 +236,11 @@ trait DynamoDbSend {
 }
 
 #[async_trait]
+trait BatchDynamoDbSend {
+    async fn send_request(self) -> Result<HashMap<String, Vec<HashMap<String, AttributeValue>>>, DynamoDbUtilError>;
+}
+
+#[async_trait]
 impl DynamoDbSend for GetItemFluentBuilder {
     async fn send_request(self) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
         let get_item_result = self
@@ -180,3 +269,37 @@ impl DynamoDbSend for UpdateItemFluentBuilder {
         Ok(attributes.to_owned())
     } 
 }
+
+#[async_trait]
+impl DynamoDbSend for PutItemFluentBuilder {
+    async fn send_request(self) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError> {
+        let put_item_result = self
+            .send()
+            .await?;
+
+        let attributes = put_item_result
+            .attributes()
+            .map_or(
+                HashMap::<String, AttributeValue>::default(), 
+                |attributes| attributes.to_owned()
+            );
+        
+        Ok(attributes)
+    }
+}
+
+#[async_trait]
+impl BatchDynamoDbSend for BatchGetItemFluentBuilder {
+    async fn send_request(self) -> Result<HashMap<String, Vec<HashMap<String, AttributeValue>>>, DynamoDbUtilError> {
+        let batch_get_item_result = self
+            .send()
+            .await?;
+    
+        let table_to_list_of_attributes = batch_get_item_result
+            .responses()
+            .ok_or_else(|| "Updating the item failed".to_owned())?;
+    
+        Ok(table_to_list_of_attributes.to_owned())
+    } 
+}
+
