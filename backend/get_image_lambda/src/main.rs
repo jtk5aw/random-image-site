@@ -62,7 +62,7 @@ async fn handler(
 
     info!("Today is {:?}", today);
 
-    let set_object_key = match image_dao.get_image(
+    let set_image = match image_dao.get_image(
             today
         ).await {
             Ok(output) => Ok(output),
@@ -76,13 +76,28 @@ async fn handler(
             }
         };
     
-    match set_object_key {
-        Ok(set_object) => {
-            info!("The currently set object is: {:?}", set_object);
+    match set_image {
+        Ok(image) => {
+            info!("The currently set image object is: {:?}", image);
+
+            // Fetch weekly recap images if necessary
+            let weekly_recap = 
+            if image.get_recents {
+                image_dao.get_recents(today).await
+                    .map_or(None, |recent_images| 
+                        Some(
+                            recent_images.iter()
+                                .map(|image| image.object_key.to_owned())
+                                .collect::<Vec<String>>()
+                        )
+                    )
+            } else {
+                None
+            };
 
             let response_body = ResponseBody {
-                url: format!("https://{}/{}", environment_variables.image_domain, set_object),
-                ..Default::default()
+                url: format!("https://{}/{}", environment_variables.image_domain, image.object_key),
+                weekly_recap
             };
 
             let response = serde_json::to_string(&response_body)?;
