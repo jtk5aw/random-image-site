@@ -18,3 +18,5 @@ All the objects in the S3 bucket are listed and then one of them is chosen at ra
 
 ### Future Plans
 Have some method of removing images from rotation and "archiving" them. Current thought it to start giving a weekly recap or something where the favorite image or any subset of images is selected as best somehow and those stick around. Unsure exacly how it would go but that is the current idea. Either way I think the weekly recap and picking a favorite will be added, even if it doesn't influence "archiving" images in any way. 
+
+Also want to add a mobile app. Want to practice messing with mobile so I think this is a good place to start. Want to get a MacOS environment though to make the IOS app so I'm working on that. 
