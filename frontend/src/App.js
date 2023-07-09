@@ -7,7 +7,12 @@ import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query';
 import Selector from './components/Reactions/Selector';
 import ReactionCounts from './components/Reactions/ReactionCounts';
+import DailyImage from './components/DailyImage/Image';
 
+import _ from 'lodash';
+import { register } from 'swiper/element/bundle';
+
+register();
 const queryClient = new QueryClient();
 
 export default function App() {
@@ -24,7 +29,7 @@ function Page() {
     queryKey: ['imageUrl'],
     queryFn: () =>
       axios.get(TODAYS_IMAGE_ENDPOINT)
-        .then((res) => res.data.url)
+        .then((res) => res.data)
   });
 
   // Fetch todays metadata
@@ -45,9 +50,24 @@ function Page() {
 }
 
 const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
+  const [todaysImage, setTodaysImage] = useState(null);
+  const [weeklyRecap, setWeeklyRecap] = useState(null);
   const [currReaction, setCurrReaction] = useState('NoReaction');
   const [currUuid, setCurrUuid] = useState(null);
   const [currReactionCounts, setCurrReactionCounts] = useState(null);
+
+  // Set the current image and potential set of weekly recap images
+  useEffect(() => {
+    if (todaysImageResponse.isSuccess) {
+      setTodaysImage(todaysImageResponse.data.url);
+    }
+  }, [todaysImageResponse]);
+
+  useEffect(() => {
+    if (todaysImageResponse.isSuccess && todaysImageResponse.data.weekly_recap != null) {
+      setWeeklyRecap(todaysImageResponse.data.weekly_recap);
+    }
+  }, [todaysImageResponse]);
 
   // Set state and localStorage based on todays metadata
   useEffect(() => {
@@ -63,8 +83,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
         setCurrUuid(currUuid);
       }
     }
-  }, [todaysMetadataResponse])
-
+  }, [todaysMetadataResponse]);
 
   useEffect(() => {
     if (todaysMetadataResponse.isSuccess) {
@@ -83,7 +102,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   }
 
   return (
-    <div className='flex flex-col justify-start pl-2 pr-2 pb-5 items-center min-w-screen min-h-screen text-white bg-black'>
+    <div className='min-w-screen min-h-screen text-white bg-black'>
       <div className='flex justify-between items-center w-screen font-serif p-1 text-4xl'> 
         <p>
           ForMaeov
@@ -93,7 +112,8 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
       <AppBody 
             todaysImageLoading={todaysImageResponse.isLoading}
             todaysMetadataLoading={todaysMetadataResponse.isLoading}
-            imageUrl={todaysImageResponse.data} 
+            imageUrl={todaysImage} 
+            weeklyRecap={weeklyRecap}
             currReaction={currReaction}
             currReactionCounts={currReactionCounts}
             currUuid={currUuid}
@@ -102,13 +122,14 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   );
 }
 
-const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, currReaction, currReactionCounts, currUuid, onEmojiClick}) => (
-  <div className='flex flex-col align-center justify-center'>
+const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, weeklyRecap, currReaction, currReactionCounts, currUuid, onEmojiClick}) => (
+  <div>
       {
         todaysImageLoading || todaysMetadataLoading
           ? <Loading /> 
           : <Successful 
               imageUrl={imageUrl}
+              weeklyRecap={weeklyRecap}
               currUuid={currUuid}
               currReaction={currReaction}
               currReactionCounts={currReactionCounts}
@@ -117,14 +138,23 @@ const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, currReact
   </div>
 );
 
-const Successful = ({imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
-  return <div>
-    <img src={`${imageUrl}`} className='object-scale-down max-w-50 max-h-50' alt="todays pic" />
-    <ReactionCounts currReactionCounts={currReactionCounts} />
-    <Selector currReaction={currReaction} onSelect={onEmojiClick} />
-  </div>
+const Successful = ({imageUrl, weeklyRecap, currReaction, currReactionCounts, onEmojiClick}) => {
+  return <swiper-container>
+    { 
+      _.map(weeklyRecap, (url, index) => {
+        return <swiper-slide key={url}> 
+          <DailyImage url={url} alt={`This is the ${index} in the carousel. Will add better alt text later`} />
+        </swiper-slide>
+      })
+    }
+  </swiper-container>
+  // return <div>
+  //   <DailyImage url={imageUrl} alt={"todays pic"} />
+  //   <ReactionCounts currReactionCounts={currReactionCounts} />
+  //   <Selector currReaction={currReaction} onSelect={onEmojiClick} />
+  // </div>
 }
 
 const Loading = ({props}) => {
-  return <div class="lds-roller"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+  return <div className="lds-roller"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
 }

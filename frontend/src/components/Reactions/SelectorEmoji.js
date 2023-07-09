@@ -11,7 +11,7 @@ export const SelectorEmoji = ({ icon, selected, label, onSelect }) => {
   // Then work to get a multistep transitino in place
 
   return (
-    <div className='flex justify-center p-1 pt-5 items-center'> 
+    <div className='flex justify-center p-1 items-center'> 
       <img className={selected ? 'h-24 w-24 animate-pulse' : 'h-24 w-24 hover:animate-pulse' } src={icon} onClick={ handleClick } />
     </div>
   )
