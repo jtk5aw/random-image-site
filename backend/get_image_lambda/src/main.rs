@@ -87,7 +87,7 @@ async fn handler(
                     .map_or(None, |recent_images| 
                         Some(
                             recent_images.iter()
-                                .map(|image| image.object_key.to_owned())
+                                .map(|image| format_image_url(&environment_variables.image_domain, &image.object_key))
                                 .collect::<Vec<String>>()
                         )
                     )
@@ -96,7 +96,7 @@ async fn handler(
             };
 
             let response_body = ResponseBody {
-                url: format!("https://{}/{}", environment_variables.image_domain, image.object_key),
+                url: format_image_url(&environment_variables.image_domain, &image.object_key),
                 weekly_recap
             };
 
@@ -111,6 +111,11 @@ async fn handler(
         Err(api_gateway_response) => Ok(api_gateway_response)
     }
 }
+
+fn format_image_url(domain: &str, object_key: &str) -> String {
+    format!("https://{}/{}", domain, object_key) 
+}
+
 struct AwsClients {
     dynamodb_client: DynamoDbClient
 }
