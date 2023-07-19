@@ -16,10 +16,10 @@ interface BaseProps {
     user_reaction_table_sort_key: string;
 }
 
-const BACKEND_BASE_DIR = '..\\backend\\target\\x86_64-unknown-linux-musl\\release\\'
+const BACKEND_BASE_DIR = '../backend/target/lambda/'
 
 function getLambdaPath(lambdaName: string) {
-  return `${BACKEND_BASE_DIR}${lambdaName}\\`;
+  return `${BACKEND_BASE_DIR}${lambdaName}/`;
 }
 
 export function constructApi(scope: Construct, props: BaseProps) {
@@ -27,9 +27,10 @@ export function constructApi(scope: Construct, props: BaseProps) {
     const handler = new lambda.Function(scope, 'GetImageLambda', {
         functionName: 'GetImageLambda',
         code: lambda.Code.fromAsset(
-          getLambdaPath('dir_get_image_lambda'),
+          getLambdaPath('get_image_lambda'),
         ),
         runtime: lambda.Runtime.PROVIDED_AL2,
+        architecture: lambda.Architecture.ARM_64,
         handler: 'not.required',
         environment: {
           RUST_BACKTRACE: '1',
@@ -52,9 +53,10 @@ export function constructApi(scope: Construct, props: BaseProps) {
       const getOrSetMetadataHandler = new lambda.Function(scope, 'GetOrSetMetadataLambda', {
         functionName: 'GetOrSetMetadataLambda',
         code: lambda.Code.fromAsset(
-          getLambdaPath('dir_get_or_set_reaction_lambda'),
+          getLambdaPath('get_or_set_reaction_lambda'),
         ),
         runtime: lambda.Runtime.PROVIDED_AL2,
+        architecture: lambda.Architecture.ARM_64,
         handler: 'not.required',
         environment: {
           RUST_BACKTRACE: '1',
@@ -92,9 +94,10 @@ export function constructEvents(scope: Construct, props: EventProps) {
   const dailySetupHandler = new lambda.Function(scope, 'DailySetupLambda', {
     functionName: 'DailySetupLambda',
     code: lambda.Code.fromAsset(
-      getLambdaPath('dir_daily_setup_lambda'),
+      getLambdaPath('daily_setup_lambda'),
     ),
     runtime: lambda.Runtime.PROVIDED_AL2,
+    architecture: lambda.Architecture.ARM_64,
     handler: 'not.required',
     environment: {
       RUST_BACKTRACE: '1',

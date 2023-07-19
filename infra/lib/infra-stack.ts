@@ -173,7 +173,7 @@ export class InfraStack extends cdk.Stack {
 
     // Deploy code to s3
     new s3deploy.BucketDeployment(this, 'S3FrontendDeployment', {
-      sources: [s3deploy.Source.asset('..\\frontend\\build')],
+      sources: [s3deploy.Source.asset('../frontend/build')],
       destinationBucket: siteBucket,
       distribution: siteDistribution,
       distributionPaths: ["/*"]
