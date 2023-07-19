@@ -139,22 +139,24 @@ const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, weeklyRec
 );
 
 const Successful = ({imageUrl, weeklyRecap, currReaction, currReactionCounts, onEmojiClick}) => {
-  return <swiper-container>
-    { 
-      _.map(weeklyRecap, (url, index) => {
-        return <swiper-slide key={url}> 
-          <DailyImage url={url} alt={`This is the ${index} in the carousel. Will add better alt text later`} />
-        </swiper-slide>
-      })
-    }
-  </swiper-container>
-  // return <div>
-  //   <DailyImage url={imageUrl} alt={"todays pic"} />
-  //   <ReactionCounts currReactionCounts={currReactionCounts} />
-  //   <Selector currReaction={currReaction} onSelect={onEmojiClick} />
-  // </div>
+  // return <swiper-container>
+  //   { 
+  //     _.map(weeklyRecap, (url, index) => {
+  //       return <swiper-slide key={url}> 
+  //         <DailyImage url={url} alt={`This is the ${index} in the carousel. Will add better alt text later`} />
+  //       </swiper-slide>
+  //     })
+  //   }
+  // </swiper-container>
+  return <div>
+    <DailyImage url={imageUrl} alt={"todays pic"} />
+    <ReactionCounts currReactionCounts={currReactionCounts} />
+    <Selector currReaction={currReaction} onSelect={onEmojiClick} />
+  </div>
 }
 
 const Loading = ({props}) => {
-  return <div className="lds-roller"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+  return <div className='text-center'>
+      <div className="lds-roller"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+    </div>
 }
