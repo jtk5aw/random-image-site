@@ -913,6 +913,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "get_or_set_favorite_recent_lambda"
+version = "0.1.0"
+dependencies = [
+ "aws-config",
+ "aws-sdk-dynamodb",
+ "aws_lambda_events",
+ "lambda_runtime",
+ "lambda_utils",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

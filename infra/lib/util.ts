@@ -70,6 +70,27 @@ export function constructApi(scope: Construct, props: BaseProps) {
         actions:['dynamodb:*'],
         resources: ['*'],
       }));
+
+      const getOrSetFavoriteRecentHandler = new lambda.Function(scope, 'GetOrSetFavoriteRecentLambda', {
+        functionName: 'GetOrSetFavoriteRecentLambda',
+        code: lambda.Code.fromAsset(
+          getLambdaPath('get_or_set_favorite_recent_lambda'),
+        ),
+        runtime: lambda.Runtime.PROVIDED_AL2,
+        architecture: lambda.Architecture.ARM_64,
+        handler: 'not.required',
+        environment: {
+          RUST_BACKTRACE: '1',
+          USER_REACTION_TABLE_NAME: props.user_reaction_table_name,
+          USER_REACTION_TABLE_PRIMARY_KEY: props.user_reaction_table_primary_key,
+          USER_REACTION_TABLE_SORT_KEY: props.user_reaction_table_sort_key,
+        }
+      });
+  
+      getOrSetFavoriteRecentHandler.addToRolePolicy(new PolicyStatement({
+        actions:['dynamodb:*'],
+        resources: ['*'],
+      }));
   
       // API Gateway
       const randomImageApi = new apiGateway.RestApi(scope, 'RandomImageAPI', {
