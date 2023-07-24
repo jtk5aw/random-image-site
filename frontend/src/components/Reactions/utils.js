@@ -6,3 +6,5 @@ export const orderAndFilterReactions = (reactions, returnFunction) => _.map(
     (key) => key), 
     (key) => returnFunction(key)
 );
+
+export const hasReacted = (reaction) => reaction !== 'NoReaction';

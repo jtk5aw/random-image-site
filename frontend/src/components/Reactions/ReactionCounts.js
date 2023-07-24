@@ -1,5 +1,5 @@
 import React from 'react';
-import { orderAndFilterReactions } from './dataUtils';
+import { orderAndFilterReactions } from './utils';
 import {getIcon} from './icons';
 import '../../App.css';
 

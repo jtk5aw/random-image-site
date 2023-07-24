@@ -3,7 +3,7 @@ import {getIcon} from './icons';
 import '../../App.css';
 
 import SelectorEmoji from './SelectorEmoji'
-import { orderAndFilterReactions } from './dataUtils';
+import { orderAndFilterReactions } from './utils';
 
 export const Selector = ({ reactions, currReaction, onSelect }) => {
 

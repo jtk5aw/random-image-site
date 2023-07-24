@@ -11,6 +11,7 @@ import DailyImage from './components/DailyImage/Image';
 
 import _ from 'lodash';
 import { register } from 'swiper/element/bundle';
+import { hasReacted } from './components/Reactions/utils';
 
 register();
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   const [currReaction, setCurrReaction] = useState('NoReaction');
   const [currUuid, setCurrUuid] = useState(null);
   const [currReactionCounts, setCurrReactionCounts] = useState(null);
+  const [showSlider, setShowSlider] = useState(false);
 
   // Set the current image and potential set of weekly recap images
   useEffect(() => {
@@ -101,13 +103,22 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
     })
   }
 
+  const shakeHeart = (currReaction, showSlider) => hasReacted(currReaction) && !showSlider;
+
   return (
     <div className='min-w-screen min-h-screen text-white bg-black'>
       <div className='flex justify-between items-center w-screen font-serif p-1 text-4xl'> 
         <p>
           ForMaeov
         </p>
-        <img src={heart} className='text-left bg-black h-20 w-20' alt="Human heart" />
+        <img 
+          src={heart} 
+          className={ shakeHeart(currReaction, showSlider)
+              ? 'animate-shake text-left h-20 w-20'
+              : 'text-left bg-black h-20 w-20'
+          } 
+          onClick={() => setShowSlider(!showSlider)}
+          alt="Human heart" />
       </div>
       <AppBody 
             todaysImageLoading={todaysImageResponse.isLoading}
@@ -117,37 +128,45 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
             currReaction={currReaction}
             currReactionCounts={currReactionCounts}
             currUuid={currUuid}
-            onEmojiClick={onEmojiClick} />
+            onEmojiClick={onEmojiClick} 
+            showSlider={showSlider}/>
     </div>
   );
 }
 
-const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, weeklyRecap, currReaction, currReactionCounts, currUuid, onEmojiClick}) => (
+const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, weeklyRecap, currReaction, currReactionCounts, currUuid, onEmojiClick, showSlider}) => (
   <div>
       {
         todaysImageLoading || todaysMetadataLoading
           ? <Loading /> 
-          : <Successful 
-              imageUrl={imageUrl}
-              weeklyRecap={weeklyRecap}
-              currUuid={currUuid}
-              currReaction={currReaction}
-              currReactionCounts={currReactionCounts}
-              onEmojiClick={onEmojiClick(currUuid)} />
+          : showSlider
+            ? <Slider 
+                weeklyRecap={weeklyRecap}
+                />
+            : <Image 
+                imageUrl={imageUrl}
+                weeklyRecap={weeklyRecap}
+                currUuid={currUuid}
+                currReaction={currReaction}
+                currReactionCounts={currReactionCounts}
+                onEmojiClick={onEmojiClick(currUuid)} />
       }
   </div>
 );
 
-const Successful = ({imageUrl, weeklyRecap, currReaction, currReactionCounts, onEmojiClick}) => {
-  // return <swiper-container>
-  //   { 
-  //     _.map(weeklyRecap, (url, index) => {
-  //       return <swiper-slide key={url}> 
-  //         <DailyImage url={url} alt={`This is the ${index} in the carousel. Will add better alt text later`} />
-  //       </swiper-slide>
-  //     })
-  //   }
-  // </swiper-container>
+const Slider = ({weeklyRecap}) => {
+  return <swiper-container>
+    { 
+      _.map(weeklyRecap, (url, index) => {
+        return <swiper-slide key={url}> 
+          <DailyImage url={url} alt={`This is the ${index} in the carousel. Will add better alt text later`} />
+        </swiper-slide>
+      })
+    }
+  </swiper-container>
+}
+
+const Image = ({imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
   return <div>
     <DailyImage url={imageUrl} alt={"todays pic"} />
     <ReactionCounts currReactionCounts={currReactionCounts} />
