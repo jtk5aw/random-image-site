@@ -1,8 +1,8 @@
 use chrono::{Duration, DateTime};
 use daily_setup_lambda::select_and_set::select_and_set_random_s3_object;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
-use aws_sdk_dynamodb::{Client as DynamoDbClient};
-use aws_sdk_s3::{Client as S3Client};
+use aws_sdk_dynamodb::Client as DynamoDbClient;
+use aws_sdk_s3::Client as S3Client;
 use lambda_utils::persistence::{user_reaction_dao::UserReactionDao, image_dynamo_dao::ImageDynamoDao, image_s3_dao::ImageS3Dao};
 use serde::Deserialize;
 use tracing::{info, error};

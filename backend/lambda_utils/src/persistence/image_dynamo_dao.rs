@@ -1,10 +1,10 @@
 
 use aws_sdk_s3::types::Object;
-use aws_sdk_dynamodb::{Client as DynamoDbClient, types::{AttributeValue}};
+use aws_sdk_dynamodb::{Client as DynamoDbClient, types::AttributeValue};
 use chrono::{DateTime, Duration, FixedOffset};
 use tracing::{instrument, info};
 
-use crate::aws_sdk::{aws_dynamodb::{DynamoDbUtilError, KeyAndAttribute, DynamoDbUtil}};
+use crate::aws_sdk::aws_dynamodb::{DynamoDbUtilError, KeyAndAttribute, DynamoDbUtil};
 
 // Structs
 pub struct ImageDynamoDao<'a> {

@@ -1,4 +1,4 @@
-use aws_sdk_dynamodb::{Client as DynamoDbClient};
+use aws_sdk_dynamodb::Client as DynamoDbClient;
 use http::Method;
 use chrono::{Local, FixedOffset};
 use lambda_utils::persistence::image_dynamo_dao::ImageDynamoDao;
