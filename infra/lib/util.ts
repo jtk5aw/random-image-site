@@ -71,10 +71,10 @@ export function constructApi(scope: Construct, props: BaseProps) {
         resources: ['*'],
       }));
 
-      const getOrSetFavoriteRecentHandler = new lambda.Function(scope, 'GetOrSetFavoriteRecentLambda', {
-        functionName: 'GetOrSetFavoriteRecentLambda',
+      const setFavoriteRecentHandler = new lambda.Function(scope, 'SetFavoriteRecentLambda', {
+        functionName: 'SetFavoriteRecentLambda',
         code: lambda.Code.fromAsset(
-          getLambdaPath('get_or_set_favorite_recent_lambda'),
+          getLambdaPath('set_favorite_recent_lambda'),
         ),
         runtime: lambda.Runtime.PROVIDED_AL2,
         architecture: lambda.Architecture.ARM_64,
@@ -87,7 +87,7 @@ export function constructApi(scope: Construct, props: BaseProps) {
         }
       });
   
-      getOrSetFavoriteRecentHandler.addToRolePolicy(new PolicyStatement({
+      setFavoriteRecentHandler.addToRolePolicy(new PolicyStatement({
         actions:['dynamodb:*'],
         resources: ['*'],
       }));
@@ -107,6 +107,9 @@ export function constructApi(scope: Construct, props: BaseProps) {
       const todaysMetadata = randomImageApi.root.addResource('todays-metadata');
       todaysMetadata.addMethod('GET', new apiGateway.LambdaIntegration(getOrSetMetadataHandler));
       todaysMetadata.addMethod('PUT', new apiGateway.LambdaIntegration(getOrSetMetadataHandler));
+
+      const setFavorite = randomImageApi.root.addResource('set-favorite');
+      setFavorite.addMethod('PUT', new apiGateway.LambdaIntegration(setFavoriteRecentHandler));
 }
 
 type EventProps = Omit<BaseProps, "image_domain">;
