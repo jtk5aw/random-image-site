@@ -1,5 +1,5 @@
 [package]
-name = "get_or_set_favorite_recent_lambda"
+name = "set_favorite_recent_lambda"
 version = "0.1.0"
 edition = "2021"
 authors = ["jacksontkennedy99@gmail.com"]
@@ -24,10 +24,13 @@ lambda_runtime = "0.8.1"
 tokio = { version = "1", features = ["macros"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
+chrono = "0.4.23"
+serde = "1"
+serde_json = "1.0.93"
 
 # Local dependencies
 lambda_utils = { path = "../lambda_utils", version = "0.1.0" }
 
 [[bin]]
-name = "get_or_set_favorite_recent_lambda"
+name = "set_favorite_recent_lambda"
 path = "src/main.rs"

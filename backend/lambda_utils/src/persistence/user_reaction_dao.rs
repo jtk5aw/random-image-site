@@ -46,10 +46,16 @@ impl From<String> for UserReactionDaoError {
 
 const REACTION_COUNTS: &str = "ReactionCounts";
 
+// Struct of what can be retrieved from the table
+pub struct UserItems {
+    pub reaction: String, 
+    pub favorite_image: String,
+}
+
 impl UserReactionDao<'_> {
 
     ///
-    /// Returns the reaction for the provided date and uuid. 
+    /// Returns all data associated with the provided date and uuid. 
     /// 
     /// # Arguments
     /// 
@@ -57,12 +63,12 @@ impl UserReactionDao<'_> {
     /// * `curr_uuid` - The UUID associated with the current user making a request
     /// 
     /// # Result
-    /// * String` - No errors can be thrown. Will either return the fetched string or return a default Reactions::NoReaction
-    pub async fn get_reaction(
+    /// * `UserItems` - No errors can be thrown. Anything that can't be found will return a default
+    pub async fn get(
         &self,
         today_as_string: &str,
         curr_uuid: &str
-    ) -> String {
+    ) -> UserItems {
         let keys_and_attributes = self.build_user_reaction_key_and_attribute(
             today_as_string,
             curr_uuid,
@@ -73,7 +79,7 @@ impl UserReactionDao<'_> {
             .await
             .ok();
     
-        match get_item_from_key_result {
+        let reaction = match &get_item_from_key_result {
             Some(dynamo_map) => {
                 dynamo_map
                     .get("reaction")
@@ -86,6 +92,24 @@ impl UserReactionDao<'_> {
                     })
             }
             None => Reactions::NoReaction.to_string(),
+        };
+
+        let favorite_image = match &get_item_from_key_result {
+            Some(dynamo_map) => {
+                dynamo_map
+                    .get("favorite_image")
+                    .map_or("".to_owned(), |image_val| {
+                        image_val
+                            .as_s()
+                            .map_or("".to_owned(), |image_key| image_key.to_owned())
+                    })
+            },
+            None => "".to_owned(),
+        };
+
+        UserItems {
+            reaction,
+            favorite_image
         }
     }
 
@@ -140,46 +164,63 @@ impl UserReactionDao<'_> {
     
         
         let old_reaction = match update_reaction_result { 
-            Ok(result) => Self::handle_old_reaction_success(result), 
-            Err(err) => Self::handle_old_reaction_error(err)
+            Ok(result) => handle_old_update_success(result, "reaction".to_owned()), 
+            Err(err) => handle_old_update_error(err, Reactions::NoReaction.to_string())
         }?;
 
         Ok(Reactions::get_reaction(&old_reaction)?)
     }
 
     ///
-    /// Helper function for put_reaction
+    /// Given a date, uuid, and favorite image key it will set the provided users favorite image on the provided
+    /// date. This will overwrite the previous favorite image if it exists and return the old favorite image key as
+    /// a string. 
     /// 
-    fn handle_old_reaction_success(
-        result: HashMap<String, AttributeValue>
+    /// # Arguments
+    /// * `today_as_string` - The date as a string "YYYY-MM-DD"
+    /// * `curr_uuid` - The Users UUID
+    /// * `new_image` - The image key as a string that is being set. 
+    ///
+    /// # Returns
+    /// * `Ok(String)` - Returns the old image key as a string. If none exists, returns the empty string
+    /// * `Error(UserReactionDaoError) - Propagates an unexpted error from calling DynamoDB. 
+    /// 
+    pub async fn set_favorite(
+        &self,
+        today_as_string: &str,
+        curr_uuid: &str,
+        new_image: &str,
     ) -> Result<String, UserReactionDaoError> {
-        info!("Request to update reaction completed successfully");
+        let keys_and_attributes = self.build_user_reaction_key_and_attribute(
+            today_as_string,
+            curr_uuid,
+        );
+    
+        let expression_attribute_values = vec![KeyAndAttribute {
+            key: ":new_favorite_image",
+            attribute: AttributeValue::S(new_image.to_owned()),
+        }];
+    
+        // Updates the reaction
+        // Gets the old reaction. This allows for decrementing the old reaction count
+        let update_favorite_result = self.dynamodb_client
+            .update_item_with_keys(
+                self.table_name,
+                keys_and_attributes,
+                "SET favorite_image = :new_favorite_image".to_owned(),
+                ReturnValue::AllOld,
+                None,
+                expression_attribute_values,
+            )
+            .await;
+    
+        
+        let old_image = match update_favorite_result { 
+            Ok(result) => handle_old_update_success(result, "favorite_image".to_owned()), 
+            Err(err) => handle_old_update_error(err, "".to_owned())
+        }?;
 
-        let reaction = result
-            .get("reaction")
-            .ok_or_else(|| "Did not successfully write reaction".to_owned())?
-            .as_s()
-            .map_err(|err| err.to_owned())?;
-
-        Ok(reaction.to_owned())
-    }
-
-    /// 
-    /// Helper Function for put_reaction
-    /// 
-    fn handle_old_reaction_error(
-        err: DynamoDbUtilError
-    ) -> Result<String, UserReactionDaoError> {
-        warn!("There was an error attempting to update the reaction");
-
-        if let DynamoDbUtilError::LocalError(_) = err {
-            info!("Error only caused because this was the first reaction. Continuing");
-
-            return Ok(Reactions::NoReaction.to_string())
-        }
-
-        error!("Error was a failure to update the previous reaction");
-        Err(UserReactionDaoError::DynamoDbError(err))
+        Ok(old_image)
     }
 
     ///
@@ -370,4 +411,38 @@ fn generate_numeric_counts(
         numeric_counts.insert(key.to_owned(), count);
     }
     numeric_counts
+}
+
+///
+/// Helper functions for updates
+/// 
+fn handle_old_update_success(
+    result: HashMap<String, AttributeValue>,
+    key: String,
+) -> Result<String, UserReactionDaoError> {
+    info!("Request to update value completed successfully");
+
+    let reaction = result
+        .get(&key)
+        .ok_or_else(|| "Did not successfully write value".to_owned())?
+        .as_s()
+        .map_err(|err| err.to_owned())?;
+
+    Ok(reaction.to_owned())
+}
+
+fn handle_old_update_error<T>(
+    err: DynamoDbUtilError,
+    default: T,
+) -> Result<T, UserReactionDaoError> {
+    warn!("There was an error attempting to update");
+
+    if let DynamoDbUtilError::LocalError(_) = err {
+        info!("Error only caused because this was the first inserted value. Continuing");
+
+        return Ok(default)
+    }
+
+    error!("Error was a failure to update the previous value");
+    Err(UserReactionDaoError::DynamoDbError(err))
 }

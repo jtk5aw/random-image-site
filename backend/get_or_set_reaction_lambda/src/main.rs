@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use chrono::Local;
 use http::Method;
-use aws_sdk_dynamodb::{Client as DynamoDbClient};
-use lambda_utils::{aws_sdk::api_gateway::{ApiGatewayProxyResponseWithoutHeaders}, models::{Reactions, ReactionError}, persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError}};
+use aws_sdk_dynamodb::Client as DynamoDbClient;
+use lambda_utils::{aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders, models::{Reactions, ReactionError}, persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError}};
 use log::{error, info, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Error as SerdeJsonError;
@@ -60,6 +60,8 @@ async fn handler(
     info!("Today is {}", today_as_string);
 
     // TODO: Break up these get and put functions into their own library files like is done for get-image-lambda
+    //  Also just consider making one get_metadata_lambda and then a seperate set_reaction_lambda
+    //  I think with the current direction of the API that makes more sense
 
     let result: Result<ApiGatewayProxyResponse, HandlerError> = match req.http_method {
         Method::GET => handler_get(
@@ -96,11 +98,12 @@ async fn handler(
     ))
 }
 
-// Body of the response for both GET and PUT
+// Body of the response for both GET
 #[derive(Serialize, Deserialize, Debug)]
-struct ResponseBody {
+struct GetResponseBody {
     uuid: String,
     reaction: String,
+    favorite_image: String,
     counts: HashMap<String, String>
 }
 
@@ -133,8 +136,8 @@ async fn handler_get(
         .first("uuid")
         .map_or(Uuid::new_v4().to_string(), |uuid| uuid.to_owned());
 
-    // Get the reaction string
-    let reaction_string = user_reaction_dao.get_reaction(
+    // Get the current user items
+    let user_items = user_reaction_dao.get(
         today_as_string, 
         &curr_uuid
     ).await;
@@ -145,9 +148,10 @@ async fn handler_get(
     ).await
     .unwrap_or_default();
     
-    let response_body = ResponseBody {
+    let response_body = GetResponseBody {
         uuid: curr_uuid,
-        reaction: reaction_string,
+        reaction: user_items.reaction,
+        favorite_image: user_items.favorite_image,
         counts: numeric_counts
     };
 
@@ -160,6 +164,15 @@ async fn handler_get(
     }
     .build_full_response())
 }
+
+// Body of the response for the PUT
+#[derive(Serialize, Deserialize, Debug)]
+struct PutResponseBody {
+    uuid: String,
+    reaction: String,
+    counts: HashMap<String, String>
+}
+
 
 // Body of the request to be recevied
 #[derive(Serialize, Deserialize, Debug)]
@@ -231,7 +244,7 @@ async fn handler_put(
     
     info!("The counts are: {:?}", numeric_counts);
 
-    let response_body = ResponseBody {
+    let response_body = PutResponseBody {
         reaction: reaction.to_string(),
         uuid: uuid.to_owned(),
         counts: numeric_counts
