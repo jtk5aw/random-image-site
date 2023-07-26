@@ -164,7 +164,7 @@ impl UserReactionDao<'_> {
     
         
         let old_reaction = match update_reaction_result { 
-            Ok(result) => handle_old_update_success(result, "reaction".to_owned()), 
+            Ok(result) => handle_old_update_success(result, "reaction".to_owned(), Reactions::NoReaction.to_string()), 
             Err(err) => handle_old_update_error(err, Reactions::NoReaction.to_string())
         }?;
 
@@ -207,7 +207,7 @@ impl UserReactionDao<'_> {
             .update_item_with_keys(
                 self.table_name,
                 keys_and_attributes,
-                "SET favorite_image = :new_favorite_image".to_owned(),
+                "SET favorite_image = if_not_exists(favorite_image, :new_favorite_image)".to_owned(),
                 ReturnValue::AllOld,
                 None,
                 expression_attribute_values,
@@ -216,7 +216,7 @@ impl UserReactionDao<'_> {
     
         
         let old_image = match update_favorite_result { 
-            Ok(result) => handle_old_update_success(result, "favorite_image".to_owned()), 
+            Ok(result) => handle_old_update_success(result, "favorite_image".to_owned(), "".to_owned()), 
             Err(err) => handle_old_update_error(err, "".to_owned())
         }?;
 
@@ -419,16 +419,20 @@ fn generate_numeric_counts(
 fn handle_old_update_success(
     result: HashMap<String, AttributeValue>,
     key: String,
+    default: String,
 ) -> Result<String, UserReactionDaoError> {
     info!("Request to update value completed successfully");
 
-    let reaction = result
-        .get(&key)
-        .ok_or_else(|| "Did not successfully write value".to_owned())?
-        .as_s()
-        .map_err(|err| err.to_owned())?;
+    let reaction = match result.get(&key) {
+        Some(value) => {
+            value.as_s()
+                .map_err(|err| err.to_owned())?
+                .to_owned()
+        }, 
+        None => default
+    };
 
-    Ok(reaction.to_owned())
+    Ok(reaction)
 }
 
 fn handle_old_update_error<T>(
@@ -438,7 +442,7 @@ fn handle_old_update_error<T>(
     warn!("There was an error attempting to update");
 
     if let DynamoDbUtilError::LocalError(_) = err {
-        info!("Error only caused because this was the first inserted value. Continuing");
+        info!("Error only caused because this was the first inserted value. Continuing: {:?}", err);
 
         return Ok(default)
     }
