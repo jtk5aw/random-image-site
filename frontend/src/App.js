@@ -1,5 +1,5 @@
 import heart from './HUMAN_HEART-cropped.svg';
-import { TODAYS_IMAGE_ENDPOINT, TODAYS_METADATA_ENDPOINT } from './config/api';
+import { SET_FAVORITE_ENDPOINT, TODAYS_IMAGE_ENDPOINT, TODAYS_METADATA_ENDPOINT } from './config/api';
 import './App.css';
 
 import axios from 'axios';
@@ -94,6 +94,12 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
 
   useEffect(() => {
     if (todaysMetadataResponse.isSuccess) {
+      setCurrFavoriteUrl(todaysMetadataResponse.data.favorite_image);
+    }
+  }, [todaysMetadataResponse]);
+
+  useEffect(() => {
+    if (todaysMetadataResponse.isSuccess) {
       setCurrReactionCounts(todaysMetadataResponse.data.counts);
     }
   }, [todaysMetadataResponse]);
@@ -112,10 +118,15 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
 
   // On recap image press, update the favorite URL 
   const onRecapClick = (uuid) => (url) => {
-    setCurrFavoriteUrl(url);
+    const urlToSend = url === currFavoriteUrl ? '' : url;
+    axios.put(SET_FAVORITE_ENDPOINT, {'favorite_image': urlToSend, 'uuid': uuid })
+    .then(res => {
+      // Means the put call was successful 
+      setCurrFavoriteUrl(urlToSend);
+    })
   }
 
-  const shakeHeart = (currReaction, showSlider) => hasReacted(currReaction) && !showSlider;
+  const shakeHeart = (currReaction, showSlider) => weeklyRecap !== null && hasReacted(currReaction) && !showSlider;
 
   return (
     <div className='min-w-screen min-h-screen text-white bg-black'>
@@ -129,7 +140,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
               ? 'animate-shake text-left h-20 w-20'
               : 'text-left bg-black h-20 w-20'
           } 
-          onClick={() => hasReacted(currReaction) 
+          onClick={() => weeklyRecap !== null && hasReacted(currReaction) 
                           ? setShowSlider(!showSlider)
                           : null }
           alt="Human heart" />
