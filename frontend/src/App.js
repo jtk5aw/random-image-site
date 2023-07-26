@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider, useQuery } from 'react-query';
 import Selector from './components/Reactions/Selector';
 import ReactionCounts from './components/Reactions/ReactionCounts';
 import DailyImage from './components/DailyImage/Image';
+import Swiper from './components/Swiper/Swiper';
 
 import _ from 'lodash';
 import { register } from 'swiper/element/bundle';
@@ -166,48 +167,32 @@ const AppBody = ({
       {
         todaysImageLoading || todaysMetadataLoading
           ? <Loading /> 
-          : showSlider
-            ? <Slider 
-                weeklyRecap={weeklyRecap}
-                currFavoriteUrl={currFavoriteUrl}
-                onRecapClick={onRecapClick}
-                />
-            : <Image 
-                imageUrl={imageUrl}
-                weeklyRecap={weeklyRecap}
-                currUuid={currUuid}
-                currReaction={currReaction}
-                currReactionCounts={currReactionCounts}
-                onEmojiClick={onEmojiClick} />
+          : <Content
+              showSlider={showSlider}
+              weeklyRecap={weeklyRecap}
+              currFavoriteUrl={currFavoriteUrl}
+              onRecapClick={onRecapClick}
+              imageUrl={imageUrl}
+              currReaction={currReaction}
+              currReactionCounts={currReactionCounts}
+              onEmojiClick={onEmojiClick} />
       }
   </div>
 );
 
-const Slider = ({weeklyRecap, currFavoriteUrl, onRecapClick}) => {
-  return <div> 
-    <swiper-container className='h-10'>
-      <div slot="container-start" className='flex flex-row justify-center'>
-        {
-        currFavoriteUrl === '' 
-          ? null 
-          : <DailyImage 
-              url={currFavoriteUrl} 
-              className={'object-scale-down max-w-sm max-h-24 p-2'}
-              alt='Currently selected favorite image'/>
-        }
-      </div>
-      { 
-        _.map(weeklyRecap, (url, index) => {
-          return <swiper-slide key={url}> 
-            <DailyImage 
-              url={url} 
-              alt={`This is the ${index} in the carousel. Will add better alt text later`} 
-              onClick={onRecapClick} />
-          </swiper-slide>
-        })
-      }
-    </swiper-container>
-    </div>
+const Content = ({showSlider, weeklyRecap, currFavoriteUrl, onRecapClick, imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
+  return showSlider
+    ? <Swiper 
+        weeklyRecap={weeklyRecap}
+        currFavoriteUrl={currFavoriteUrl}
+        onRecapClick={onRecapClick}
+        />
+    : <Image 
+        imageUrl={imageUrl}
+        weeklyRecap={weeklyRecap}
+        currReaction={currReaction}
+        currReactionCounts={currReactionCounts}
+        onEmojiClick={onEmojiClick} />
 }
 
 const Image = ({imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
