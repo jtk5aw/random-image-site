@@ -12,7 +12,7 @@ export const SelectorEmoji = ({ icon, selected, label, onSelect }) => {
 
   return (
     <div className='flex justify-center p-1 items-center'> 
-      <img className={selected ? 'h-24 w-24 animate-pulse' : 'h-24 w-24 hover:animate-pulse' } src={icon} onClick={ handleClick } />
+      <img className={selected ? 'h-24 w-24 animate-pulse' : 'h-24 w-24' } src={icon} onClick={ handleClick } />
     </div>
   )
 }

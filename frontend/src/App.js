@@ -12,6 +12,7 @@ import DailyImage from './components/DailyImage/Image';
 import _ from 'lodash';
 import { register } from 'swiper/element/bundle';
 import { hasReacted } from './components/Reactions/utils';
+import { NO_REACTION } from './config/constants';
 
 register();
 const queryClient = new QueryClient();
@@ -52,10 +53,13 @@ function Page() {
 
 const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   const [todaysImage, setTodaysImage] = useState(null);
-  const [weeklyRecap, setWeeklyRecap] = useState(null);
-  const [currReaction, setCurrReaction] = useState('NoReaction');
+
   const [currUuid, setCurrUuid] = useState(null);
+  const [currReaction, setCurrReaction] = useState(NO_REACTION);
   const [currReactionCounts, setCurrReactionCounts] = useState(null);
+
+  const [weeklyRecap, setWeeklyRecap] = useState(null);
+  const [currFavoriteUrl, setCurrFavoriteUrl] = useState('');
   const [showSlider, setShowSlider] = useState(false);
 
   // Set the current image and potential set of weekly recap images
@@ -95,12 +99,19 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
 
   // On emoji press, update the reaction
   const onEmojiClick = (uuid) => (reaction) => {
-    axios.put(TODAYS_METADATA_ENDPOINT, {'reaction': reaction, 'uuid': uuid})
+    const reactionToSend = reaction === currReaction ? NO_REACTION : reaction; 
+
+    axios.put(TODAYS_METADATA_ENDPOINT, {'reaction': reactionToSend, 'uuid': uuid})
     .then(res => {
       // Means the put was successful
-      setCurrReaction(reaction)
+      setCurrReaction(reactionToSend)
       setCurrReactionCounts(res.data.counts)
     })
+  }
+
+  // On recap image press, update the favorite URL 
+  const onRecapClick = (uuid) => (url) => {
+    setCurrFavoriteUrl(url);
   }
 
   const shakeHeart = (currReaction, showSlider) => hasReacted(currReaction) && !showSlider;
@@ -117,7 +128,9 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
               ? 'animate-shake text-left h-20 w-20'
               : 'text-left bg-black h-20 w-20'
           } 
-          onClick={() => setShowSlider(!showSlider)}
+          onClick={() => hasReacted(currReaction) 
+                          ? setShowSlider(!showSlider)
+                          : null }
           alt="Human heart" />
       </div>
       <AppBody 
@@ -128,13 +141,27 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
             currReaction={currReaction}
             currReactionCounts={currReactionCounts}
             currUuid={currUuid}
-            onEmojiClick={onEmojiClick} 
+            currFavoriteUrl={currFavoriteUrl}
+            onEmojiClick={onEmojiClick(currUuid)}
+            onRecapClick={onRecapClick(currUuid)}
             showSlider={showSlider}/>
     </div>
   );
 }
 
-const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, weeklyRecap, currReaction, currReactionCounts, currUuid, onEmojiClick, showSlider}) => (
+const AppBody = ({
+  todaysImageLoading, 
+  todaysMetadataLoading, 
+  imageUrl, 
+  weeklyRecap, 
+  currReaction, 
+  currReactionCounts, 
+  currUuid, 
+  currFavoriteUrl, 
+  onEmojiClick, 
+  onRecapClick, 
+  showSlider
+}) => (
   <div>
       {
         todaysImageLoading || todaysMetadataLoading
@@ -142,6 +169,8 @@ const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, weeklyRec
           : showSlider
             ? <Slider 
                 weeklyRecap={weeklyRecap}
+                currFavoriteUrl={currFavoriteUrl}
+                onRecapClick={onRecapClick}
                 />
             : <Image 
                 imageUrl={imageUrl}
@@ -149,21 +178,36 @@ const AppBody = ({todaysImageLoading, todaysMetadataLoading, imageUrl, weeklyRec
                 currUuid={currUuid}
                 currReaction={currReaction}
                 currReactionCounts={currReactionCounts}
-                onEmojiClick={onEmojiClick(currUuid)} />
+                onEmojiClick={onEmojiClick} />
       }
   </div>
 );
 
-const Slider = ({weeklyRecap}) => {
-  return <swiper-container>
-    { 
-      _.map(weeklyRecap, (url, index) => {
-        return <swiper-slide key={url}> 
-          <DailyImage url={url} alt={`This is the ${index} in the carousel. Will add better alt text later`} />
-        </swiper-slide>
-      })
-    }
-  </swiper-container>
+const Slider = ({weeklyRecap, currFavoriteUrl, onRecapClick}) => {
+  return <div> 
+    <swiper-container className='h-10'>
+      <div slot="container-start" className='flex flex-row justify-center'>
+        {
+        currFavoriteUrl === '' 
+          ? null 
+          : <DailyImage 
+              url={currFavoriteUrl} 
+              className={'object-scale-down max-w-sm max-h-24 p-2'}
+              alt='Currently selected favorite image'/>
+        }
+      </div>
+      { 
+        _.map(weeklyRecap, (url, index) => {
+          return <swiper-slide key={url}> 
+            <DailyImage 
+              url={url} 
+              alt={`This is the ${index} in the carousel. Will add better alt text later`} 
+              onClick={onRecapClick} />
+          </swiper-slide>
+        })
+      }
+    </swiper-container>
+    </div>
 }
 
 const Image = ({imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
