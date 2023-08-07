@@ -207,7 +207,7 @@ impl UserReactionDao<'_> {
             .update_item_with_keys(
                 self.table_name,
                 keys_and_attributes,
-                "SET favorite_image = if_not_exists(favorite_image, :new_favorite_image)".to_owned(),
+                "SET favorite_image = :new_favorite_image".to_owned(),
                 ReturnValue::AllOld,
                 None,
                 expression_attribute_values,
