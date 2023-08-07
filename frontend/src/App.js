@@ -10,7 +10,6 @@ import ReactionCounts from './components/Reactions/ReactionCounts';
 import DailyImage from './components/DailyImage/Image';
 import Swiper from './components/Swiper/Swiper';
 
-import _ from 'lodash';
 import { register } from 'swiper/element/bundle';
 import { hasReacted } from './components/Reactions/utils';
 import { NO_REACTION } from './config/constants';
@@ -126,7 +125,13 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
     })
   }
 
-  const shakeHeart = (currReaction, showSlider) => weeklyRecap !== null && hasReacted(currReaction) && !showSlider;
+  // On Recent Image button click, toggle screen viewed
+  const onToggleRecentImagesClick = () => {
+    if (weeklyRecap !== null && hasReacted(currReaction)) {
+      setShowSlider(!showSlider);
+    }
+  }
+  const showRecentFavorites = (currReaction, showSlider) => weeklyRecap !== null && hasReacted(currReaction) && !showSlider;
 
   return (
     <div className='min-w-screen min-h-screen text-white bg-black'>
@@ -136,13 +141,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
         </p>
         <img 
           src={heart} 
-          className={ shakeHeart(currReaction, showSlider)
-              ? 'animate-shake text-left h-20 w-20'
-              : 'text-left bg-black h-20 w-20'
-          } 
-          onClick={() => weeklyRecap !== null && hasReacted(currReaction) 
-                          ? setShowSlider(!showSlider)
-                          : null }
+          className='text-left bg-black h-20 w-20'
           alt="Human heart" />
       </div>
       <AppBody 
@@ -156,7 +155,9 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
             currFavoriteUrl={currFavoriteUrl}
             onEmojiClick={onEmojiClick(currUuid)}
             onRecapClick={onRecapClick(currUuid)}
-            showSlider={showSlider}/>
+            onToggleRecentImagesClick={onToggleRecentImagesClick}
+            showSlider={showSlider}
+            showRecentFavorites={showRecentFavorites(currReaction, showSlider)}/>
     </div>
   );
 }
@@ -172,7 +173,9 @@ const AppBody = ({
   currFavoriteUrl, 
   onEmojiClick, 
   onRecapClick, 
-  showSlider
+  onToggleRecentImagesClick,
+  showSlider,
+  showRecentFavorites
 }) => (
   <div>
       {
@@ -186,30 +189,39 @@ const AppBody = ({
               imageUrl={imageUrl}
               currReaction={currReaction}
               currReactionCounts={currReactionCounts}
-              onEmojiClick={onEmojiClick} />
+              showRecentFavorites={showRecentFavorites}
+              onEmojiClick={onEmojiClick}
+              onToggleRecentImagesClick={onToggleRecentImagesClick} />
       }
   </div>
 );
 
-const Content = ({showSlider, weeklyRecap, currFavoriteUrl, onRecapClick, imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
+const Content = ({showSlider, weeklyRecap, currFavoriteUrl, onRecapClick, imageUrl, currReaction, currReactionCounts, showRecentFavorites, onEmojiClick, onToggleRecentImagesClick}) => {
   return showSlider
     ? <Swiper 
         weeklyRecap={weeklyRecap}
         currFavoriteUrl={currFavoriteUrl}
         onRecapClick={onRecapClick}
+        onToggleRecentImagesClick={onToggleRecentImagesClick}
         />
     : <Image 
         imageUrl={imageUrl}
         weeklyRecap={weeklyRecap}
         currReaction={currReaction}
         currReactionCounts={currReactionCounts}
-        onEmojiClick={onEmojiClick} />
+        currFavoriteUrl={currFavoriteUrl}
+        showRecentFavorites={showRecentFavorites}
+        onEmojiClick={onEmojiClick}
+        onToggleRecentImagesClick={onToggleRecentImagesClick} />
 }
 
-const Image = ({imageUrl, currReaction, currReactionCounts, onEmojiClick}) => {
+const Image = ({imageUrl, currReaction, currReactionCounts, currFavoriteUrl, showRecentFavorites, onEmojiClick, onToggleRecentImagesClick}) => {
   return <div>
     <DailyImage url={imageUrl} alt={"todays pic"} />
-    <ReactionCounts currReactionCounts={currReactionCounts} />
+    <ReactionCounts 
+      currReactionCounts={currReactionCounts} 
+      onToggleRecentImagesClick={ showRecentFavorites ? onToggleRecentImagesClick : null }
+      hasFavorite={currFavoriteUrl !== ''}/>
     <Selector currReaction={currReaction} onSelect={onEmojiClick} />
   </div>
 }

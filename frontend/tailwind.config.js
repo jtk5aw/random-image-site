@@ -7,6 +7,7 @@ module.exports = {
     extend: {
       animation:{
         'shake': 'shake 1.5s cubic-bezier(.36,.07,.19,.97) both infinite',
+        'spin-slow': 'spin 1.5s linear infinite'
       },
       keyframes: {
           'shake' : {
