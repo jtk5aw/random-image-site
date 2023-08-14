@@ -10,6 +10,7 @@ use crate::aws_sdk::aws_dynamodb::{DynamoDbUtilError, KeyAndAttribute, DynamoDbU
 pub struct ImageDynamoDao<'a> {
     pub table_name: &'a str,
     pub primary_key: &'a str,
+    pub sort_key: &'a str,
     pub dynamodb_client: &'a DynamoDbClient,
 }
 
@@ -48,18 +49,21 @@ impl From<String> for ImageDynamoDaoError {
 // Implementation
 const OBJECT_KEY: &str = "object_key";
 const GET_RECENTS: &str = "get_recents";
+const IMAGE: &str = "Image";
 
 impl ImageDynamoDao<'_> {
 
     #[instrument(skip_all)]
     pub async fn get_image(
         &self,
+        group: &str,
         date: DateTime<FixedOffset>,
     ) -> Result<Image, ImageDynamoDaoError> {
-        let item = self.dynamodb_client.get_item_from_key(
+        let get_keys_and_attributes = self.build_get_image_key_and_attribute(group, date);
+
+        let item = self.dynamodb_client.get_item_from_keys(
             self.table_name,
-            self.primary_key,
-            date.format("%Y-%m-%d").to_string()
+            get_keys_and_attributes,
         )
         .await?;
 
@@ -98,10 +102,11 @@ impl ImageDynamoDao<'_> {
     #[instrument(skip_all)]
     pub async fn get_recents(
         &self,
+        group: &str,
         date: DateTime<FixedOffset>,
     ) -> Result<Vec<Image>, ImageDynamoDaoError> {
 
-        let batch_get_keys_and_attributes = self.build_get_recents_key_and_attribute(date);
+        let batch_get_keys_and_attributes = self.build_get_recents_key_and_attribute(group, date);
 
         // Create set of items that get returned. Short circuit for any error thrown
         let generated_set = self.dynamodb_client
@@ -134,6 +139,7 @@ impl ImageDynamoDao<'_> {
     #[instrument(skip_all)]
     pub async fn set_image(
         &self,
+        group: &str,
         object: Object,
         date: DateTime<FixedOffset>,
         get_recents: bool
@@ -145,7 +151,12 @@ impl ImageDynamoDao<'_> {
     
         info!(date = ?date, object_key = object_key, "Writing object as the record for date: ");
 
-        let keys_and_attributes = self.build_set_image_key_and_attribute(date, object_key, get_recents);
+        let keys_and_attributes = self.build_set_image_key_and_attribute(
+            group, 
+            date, 
+            object_key, 
+            get_recents
+        );
 
         let _put_result = self.dynamodb_client.put_item_from_keys(
                 self.table_name, 
@@ -158,23 +169,51 @@ impl ImageDynamoDao<'_> {
 
     /** Helper Functions that require state */
     #[instrument(skip_all)]
-    fn build_get_recents_key_and_attribute(
+    fn build_get_image_key_and_attribute(
         &self,
+        group: &str,
         date: DateTime<FixedOffset>
     ) -> Vec<KeyAndAttribute> {
 
-        info!(date = ?date, "Date is.");
+        info!(date = ?date, group = group, "Date and group are");
 
-        let mut key_and_attribute: Vec<KeyAndAttribute> = Vec::<KeyAndAttribute>::new();
+        vec![
+            KeyAndAttribute {
+                key: self.primary_key,
+                attribute: AttributeValue::S(format_primary_key(group, date)),
+            },
+            KeyAndAttribute {
+                key: self.sort_key,
+                attribute: AttributeValue::S(IMAGE.to_owned()),
+            },
+        ]
+    }
+
+    #[instrument(skip_all)]
+    fn build_get_recents_key_and_attribute(
+        &self,
+        group: &str,
+        date: DateTime<FixedOffset>
+    ) -> Vec<Vec<KeyAndAttribute>> {
+
+        info!(date = ?date, group = group, "Date and group are: ");
+
+        let mut key_and_attribute: Vec<Vec<KeyAndAttribute>> = Vec::<Vec<KeyAndAttribute>>::new();
         for num in 1..=5 {
             let date = date - Duration::days(num);
 
             info!(prev_date = ?date, "Next date is.");
 
-            key_and_attribute.push(KeyAndAttribute { 
-                key: self.primary_key, 
-                attribute: AttributeValue::S(date.format("%Y-%m-%d").to_string())
-            })
+            key_and_attribute.push(vec![
+                KeyAndAttribute { 
+                    key: self.primary_key, 
+                    attribute: AttributeValue::S(format_primary_key(group, date))
+                },
+                KeyAndAttribute {
+                    key: self.sort_key, 
+                    attribute: AttributeValue::S(IMAGE.to_owned())
+                },
+            ])
         }
         key_and_attribute
     }
@@ -182,17 +221,22 @@ impl ImageDynamoDao<'_> {
     #[instrument(skip_all)]
     fn build_set_image_key_and_attribute(
         &self,
+        group: &str,
         date: DateTime<FixedOffset>,
         object_key: &str,
         get_recents: bool,
     ) -> Vec<KeyAndAttribute> {
 
-        info!(date = ?date, object = object_key, "The day being written and the object being written are: ");
+        info!(date = ?date, group = group, object = object_key, "The day, group and object_key are: ");
 
         vec![
             KeyAndAttribute {
                 key: self.primary_key,
-                attribute: AttributeValue::S(date.format("%Y-%m-%d").to_string()),
+                attribute: AttributeValue::S(format_primary_key(group, date)),
+            },
+            KeyAndAttribute {
+                key: self.sort_key,
+                attribute: AttributeValue::S(IMAGE.to_owned()),
             },
             KeyAndAttribute {
                 key: OBJECT_KEY,
@@ -204,4 +248,16 @@ impl ImageDynamoDao<'_> {
             }
         ]
     }
+}
+
+// Helper functinos that don't require state
+fn format_primary_key(
+    group: &str, 
+    date: DateTime<FixedOffset>
+) -> String {
+    format!(
+        "{}_{}",
+        group,
+        date.format("%Y-%m-%d").to_string()
+    )
 }

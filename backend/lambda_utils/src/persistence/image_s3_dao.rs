@@ -20,7 +20,6 @@ pub enum ImageS3DaoError {
 
 pub struct ImageS3Dao<'a> {
     pub bucket_name: &'a str,
-    pub prefix: &'a str,
     pub s3_client: &'a S3Client,
 }
 
@@ -39,7 +38,7 @@ impl From<String> for ImageS3DaoError {
 
 impl ImageS3Dao<'_> {
     ///
-    /// List the objects in the associated bucket with the associated prefix. 
+    /// List the objects in the associated bucket with the provided prefix. 
     /// Return a list of Object's that contain metadata on the objects listed. 
     /// 
     /// # Result
@@ -48,11 +47,12 @@ impl ImageS3Dao<'_> {
     /// 
     #[instrument(skip_all)]
     pub async fn list_by_prefix(
-        &self
+        &self,
+        prefix: &str,
     ) -> Result<Vec<Object>, ImageS3DaoError> {
 
         Ok(self.s3_client
-            .list_items(self.bucket_name, Some(self.prefix))
+            .list_items(self.bucket_name, Some(prefix))
             .await?)
     }
 

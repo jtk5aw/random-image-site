@@ -30,8 +30,6 @@ async fn main() -> Result<(), Error> {
     })).await
 }
 
-const HARDCODED_PREFIX: &str = "discord";
-
 async fn function_handler(
     environment_variables: &EnvironmentVariables,
     aws_clients: &AwsClients,
@@ -53,12 +51,12 @@ async fn function_handler(
     let image_dynamo_dao = ImageDynamoDao {
         table_name: &environment_variables.table_name,
         primary_key: &environment_variables.table_primary_key,
+        sort_key: &environment_variables.table_sort_key,
         dynamodb_client: &aws_clients.dynamodb_client,
     };
 
     let image_s3_dao = ImageS3Dao {
         bucket_name: &environment_variables.bucket_name,
-        prefix: HARDCODED_PREFIX,
         s3_client: &aws_clients.s3_client
     };
 
@@ -84,6 +82,7 @@ struct EnvironmentVariables {
     bucket_name: String,
     table_name: String,
     table_primary_key: String,
+    table_sort_key: String,
     user_reaction_table_name: String,
     user_reaction_table_primary_key: String,
     user_reaction_table_sort_key: String,
@@ -97,6 +96,8 @@ impl EnvironmentVariables {
             .expect("A TABLE_NAME must be set in this app's Lambda environment variables.");
         let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
             .expect("A TABLE_PRIMARY_KEY must be set in this app's Lambda environment varialbes.");
+        let table_sort_key = std::env::var("TABLE_SORT_KEY")
+            .expect("A TABLE_SORT_KEY must be provided");
         let user_reaction_table_name = std::env::var("USER_REACTION_TABLE_NAME")
             .expect("A USER_REACTION_TABLE_NAME must be provided");
         let user_reaction_table_primary_key = std::env::var("USER_REACTION_TABLE_PRIMARY_KEY")
@@ -108,6 +109,7 @@ impl EnvironmentVariables {
             bucket_name, 
             table_name, 
             table_primary_key,
+            table_sort_key,
             user_reaction_table_name,
             user_reaction_table_primary_key,
             user_reaction_table_sort_key

@@ -32,6 +32,8 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     Ok(())
 }
 
+const HARDCODED_PREFIX: &str = "discord";
+
 #[derive(Serialize, Default)]
 struct ResponseBody {
     url: String,
@@ -49,6 +51,7 @@ async fn handler(
     let image_dao = ImageDynamoDao {
         table_name: &environment_variables.table_name,
         primary_key: &environment_variables.table_primary_key,
+        sort_key: &environment_variables.table_sort_key,
         dynamodb_client: &aws_clients.dynamodb_client,
     };
 
@@ -63,6 +66,7 @@ async fn handler(
     info!("Today is {:?}", today);
 
     let set_image = match image_dao.get_image(
+            HARDCODED_PREFIX,
             today
         ).await {
             Ok(output) => Ok(output),
@@ -83,7 +87,7 @@ async fn handler(
             // Fetch weekly recap images if necessary
             let weekly_recap = 
             if image.get_recents {
-                image_dao.get_recents(today).await
+                image_dao.get_recents(HARDCODED_PREFIX, today).await
                     .map_or(None, |recent_images| 
                         Some(
                             recent_images.iter()
@@ -138,6 +142,7 @@ struct EnvironmentVariables {
     image_domain: String,
     table_name: String,
     table_primary_key: String,
+    table_sort_key: String, 
 }
 
 impl EnvironmentVariables {
@@ -148,11 +153,14 @@ impl EnvironmentVariables {
             .expect("A TABLE_NAME must be set in this app's Lambda environment variables.");
         let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
             .expect("A TABLE_PRIMARY_KEY must be set in this app's Lambda environment varialbes.");
+        let table_sort_key = std::env::var("TABLE_SORT_KEY")
+            .expect("A TABLE_SORT_KEY must be set in this app's Lambda environment varialbes.");
 
         EnvironmentVariables { 
             image_domain,
-            table_name, 
-            table_primary_key 
+            table_name,
+            table_primary_key,
+            table_sort_key, 
         }
     }
 }

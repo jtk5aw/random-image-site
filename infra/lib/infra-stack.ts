@@ -14,6 +14,9 @@ export class InfraStack extends cdk.Stack {
 
     // Constants
     const bucket_name = 'get-image-lambda-bucket';
+    const random_image_site_table_name = 'random-image-site';
+    const random_image_site_primary_key = 'pk';
+    const random_image_site_sort_key = 'sk';
     const table_name = 'image-info-table';
     const table_primary_key = 'id';
     const user_reaction_table_name = 'user-reaction-table';
@@ -28,6 +31,8 @@ export class InfraStack extends cdk.Stack {
       publicReadAccess: false,
     });
 
+    // Dynamo Tables
+    // TODO: Remove this table after merging
     const imageInfoTable = new cdk.aws_dynamodb.Table(this, 'ImageInfoTable', {
       tableName: table_name,
       partitionKey: { name: table_primary_key, type: cdk.aws_dynamodb.AttributeType.STRING },
@@ -44,6 +49,7 @@ export class InfraStack extends cdk.Stack {
       maxCapacity: 3,
     });
 
+    // TODO: Remove this table after merging
     const userReactionTable = new cdk.aws_dynamodb.Table(this, 'UserReactionTable', {
       tableName: user_reaction_table_name,
       partitionKey: { name: user_reaction_table_primary_key, type: cdk.aws_dynamodb.AttributeType.STRING },
@@ -61,11 +67,30 @@ export class InfraStack extends cdk.Stack {
       maxCapacity: 3,
     });
 
+    const randomImageSiteTable = new cdk.aws_dynamodb.Table(this, 'RandomImageSiteTable', {
+      tableName: random_image_site_table_name,
+      partitionKey: { name: random_image_site_primary_key, type: cdk.aws_dynamodb.AttributeType.STRING },
+      sortKey: { name: random_image_site_sort_key, type: cdk.aws_dynamodb.AttributeType.STRING },
+      billingMode: cdk.aws_dynamodb.BillingMode.PROVISIONED
+    });
+
+    randomImageSiteTable.autoScaleReadCapacity({
+      minCapacity: 1, 
+      maxCapacity: 3,
+    });
+    randomImageSiteTable.autoScaleWriteCapacity({
+      minCapacity: 1,
+      maxCapacity: 3
+    });
+
     // Create event driven architecture
     constructEvents(this, {
       bucket_name,
       table_name,
       table_primary_key,
+      random_image_site_table_name,
+      random_image_site_primary_key,
+      random_image_site_sort_key,
       user_reaction_table_name,
       user_reaction_table_primary_key,
       user_reaction_table_sort_key
@@ -77,6 +102,9 @@ export class InfraStack extends cdk.Stack {
       image_domain,
       table_name,
       table_primary_key,
+      random_image_site_table_name,
+      random_image_site_primary_key,
+      random_image_site_sort_key,
       user_reaction_table_name,
       user_reaction_table_primary_key,
       user_reaction_table_sort_key

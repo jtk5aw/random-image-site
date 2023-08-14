@@ -11,6 +11,9 @@ interface BaseProps {
     image_domain: string;
     table_name: string;
     table_primary_key: string;
+    random_image_site_table_name: string,
+    random_image_site_primary_key: string,
+    random_image_site_sort_key: string,
     user_reaction_table_name: string;
     user_reaction_table_primary_key: string;
     user_reaction_table_sort_key: string;
@@ -35,8 +38,9 @@ export function constructApi(scope: Construct, props: BaseProps) {
         environment: {
           RUST_BACKTRACE: '1',
           IMAGE_DOMAIN: props.image_domain,
-          TABLE_NAME: props.table_name,
-          TABLE_PRIMARY_KEY: props.table_primary_key,
+          TABLE_NAME: props.random_image_site_table_name,
+          TABLE_PRIMARY_KEY: props.random_image_site_primary_key,
+          TABLE_SORT_KEY: props.random_image_site_sort_key,
         }
       });
   
@@ -126,8 +130,9 @@ export function constructEvents(scope: Construct, props: EventProps) {
     environment: {
       RUST_BACKTRACE: '1',
       BUCKET_NAME: props.bucket_name,
-      TABLE_NAME: props.table_name,
-      TABLE_PRIMARY_KEY: props.table_primary_key,
+      TABLE_NAME: props.random_image_site_table_name,
+      TABLE_PRIMARY_KEY: props.random_image_site_primary_key,
+      TABLE_SORT_KEY: props.random_image_site_sort_key,
       USER_REACTION_TABLE_NAME: props.user_reaction_table_name,
       USER_REACTION_TABLE_PRIMARY_KEY: props.user_reaction_table_primary_key,
       USER_REACTION_TABLE_SORT_KEY: props.user_reaction_table_sort_key,

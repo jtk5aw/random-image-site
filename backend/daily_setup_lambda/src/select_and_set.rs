@@ -1,4 +1,4 @@
-use std::collections::{HashSet};
+use std::collections::HashSet;
 
 use chrono::{DateTime, FixedOffset};
 use lambda_utils::persistence::{image_dynamo_dao::{ImageDynamoDao, ImageDynamoDaoError}, image_s3_dao::{ImageS3DaoError, ImageS3Dao}};
@@ -32,6 +32,8 @@ impl From<String> for SelectAndSetRandomObjectError {
     }
 }
 
+const HARDCODED_PREFIX: &str = "discord";
+
 #[instrument(skip_all)]
 pub async fn select_and_set_random_s3_object(
     tomorrow: DateTime<FixedOffset>,
@@ -40,7 +42,7 @@ pub async fn select_and_set_random_s3_object(
 ) -> Result<String, SelectAndSetRandomObjectError> {
 
     // Get the images
-    let list_of_images = match image_dynamo_dao.get_recents(tomorrow).await {
+    let list_of_images = match image_dynamo_dao.get_recents(HARDCODED_PREFIX, tomorrow).await {
         Ok(list_of_images) => list_of_images,
         Err(err) => {
             error!("Encountered the following error while trying to find the most recent images: {:?}. Using empty set", err);
@@ -55,7 +57,7 @@ pub async fn select_and_set_random_s3_object(
         .collect::<HashSet<String>>();
 
     // List all objects in the bucket
-    let objects_list = image_s3_dao.list_by_prefix().await?;
+    let objects_list = image_s3_dao.list_by_prefix(HARDCODED_PREFIX).await?;
 
     info!("The set of recent object_keys: {:?}", set_of_recents);
 
@@ -74,7 +76,12 @@ pub async fn select_and_set_random_s3_object(
     };
     info!("Selected a random object: {:?}", random_selected_object);
 
-    let object_key = image_dynamo_dao.set_image(random_selected_object, tomorrow, !had_get_recents)
+    let object_key = image_dynamo_dao.set_image(
+            HARDCODED_PREFIX,
+            random_selected_object, 
+            tomorrow, 
+            !had_get_recents
+        )
         .await
         .map_err(|err| {
             error!("Failed to write the random object to dynamodb due to the following: {:?}", err);

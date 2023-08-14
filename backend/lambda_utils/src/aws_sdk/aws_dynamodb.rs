@@ -56,6 +56,9 @@ impl From<String> for DynamoDbUtilError {
     }
 }
 
+// TODO; Either remove the get_item_from_key and get_batch_item_from_key methods 
+// or have both of these methods re-use the same internal code and the equivalen *_keys method. 
+// They don't both need to exist
 #[async_trait]
 pub trait DynamoDbUtil {
     async fn get_item_from_key(
@@ -71,10 +74,16 @@ pub trait DynamoDbUtil {
         keys_and_attributes: Vec<KeyAndAttribute<'a>>
     ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
 
-    async fn batch_get_item_from_keys<'a>(
+    async fn batch_get_item_from_key<'a>(
         &self,
         table_name: &str,
         keys_and_attributes: Vec<KeyAndAttribute<'a>>
+    ) -> Result<Vec<HashMap<String, AttributeValue>>, DynamoDbUtilError>;
+
+    async fn batch_get_item_from_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<Vec<KeyAndAttribute<'a>>>
     ) -> Result<Vec<HashMap<String, AttributeValue>>, DynamoDbUtilError>;
 
     async fn put_item_from_keys<'a>(
@@ -135,7 +144,7 @@ impl DynamoDbUtil for DynamoDbClient {
     /// Built to only allow for batch requests on a single dynamo table. 
     /// A refactor would need to be done to fetch from multiple tables in one query.
     /// 
-    async fn batch_get_item_from_keys<'a>(
+    async fn batch_get_item_from_key<'a>(
         &self,
         table_name: &str,
         keys_and_attributes: Vec<KeyAndAttribute<'a>>
@@ -149,6 +158,36 @@ impl DynamoDbUtil for DynamoDbClient {
                     key_and_attribute.key.to_owned(),
                     key_and_attribute.attribute
                 )]));
+        }
+        let batch_get_keys_and_attributes = batch_get_keys_and_attributes.build();
+
+        
+        let batch_get_item_request = self
+            .batch_get_item()
+            .request_items(
+                table_name,
+                batch_get_keys_and_attributes
+            );
+
+        Ok(batch_get_item_request
+            .send_request()
+            .await?
+            .remove(table_name) // Remove transfers ownership so the Vec doesn't have to be copied. Probably not necessary but feels cleaner
+            .ok_or_else(|| "The desired table name returned no responses".to_owned())?
+        )
+    }
+
+    async fn batch_get_item_from_keys<'a>(
+        &self,
+        table_name: &str,
+        keys_and_attributes: Vec<Vec<KeyAndAttribute<'a>>>
+    ) -> Result<Vec<HashMap<String, AttributeValue>>, DynamoDbUtilError> {
+        // Create BatchGetItem object for each set of keys
+        let mut batch_get_keys_and_attributes = KeysAndAttributes::builder();
+        for key_and_attribute_list in keys_and_attributes {
+            let key_and_attribute_map = build_multi_key_and_attribute_map(key_and_attribute_list);
+
+            batch_get_keys_and_attributes = batch_get_keys_and_attributes.keys(key_and_attribute_map);
         }
         let batch_get_keys_and_attributes = batch_get_keys_and_attributes.build();
 
@@ -230,6 +269,25 @@ impl DynamoDbUtil for DynamoDbClient {
     }
 }
 
+// Helper Functions
+fn build_multi_key_and_attribute_map(
+    key_and_attribute_list: Vec<KeyAndAttribute>
+) -> HashMap<String, AttributeValue> {
+    let mut key_and_attribute_map = HashMap::new();
+
+    for key_and_attribute in key_and_attribute_list {
+        key_and_attribute_map.insert(
+            key_and_attribute.key.to_owned(),
+            key_and_attribute.attribute,
+        );
+    }
+
+    let key_and_attribute_map = key_and_attribute_map;
+
+    key_and_attribute_map
+}
+
+// Overidden Send Functions
 #[async_trait]
 trait DynamoDbSend {
     async fn send_request(self) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
