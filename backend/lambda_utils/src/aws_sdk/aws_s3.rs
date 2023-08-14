@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use aws_sdk_dynamodb::error::{SdkError as S3SdkError};
-use aws_sdk_s3::{operation::{list_objects::ListObjectsError, get_object::GetObjectError}, {Client as S3Client}, types::Object};
+use aws_sdk_dynamodb::error::SdkError as S3SdkError;
+use aws_sdk_s3::{operation::{list_objects::ListObjectsError, get_object::GetObjectError}, Client as S3Client, types::Object};
 use tracing::{info, instrument};
 
 #[derive(Debug)]
