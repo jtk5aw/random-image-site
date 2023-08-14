@@ -9,14 +9,9 @@ import { Duration } from 'aws-cdk-lib';
 interface BaseProps {
     bucket_name: string;
     image_domain: string;
-    table_name: string;
-    table_primary_key: string;
     random_image_site_table_name: string,
     random_image_site_primary_key: string,
     random_image_site_sort_key: string,
-    user_reaction_table_name: string;
-    user_reaction_table_primary_key: string;
-    user_reaction_table_sort_key: string;
 }
 
 const BACKEND_BASE_DIR = '../backend/target/lambda/'

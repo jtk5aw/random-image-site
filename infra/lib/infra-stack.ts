@@ -86,28 +86,18 @@ export class InfraStack extends cdk.Stack {
     // Create event driven architecture
     constructEvents(this, {
       bucket_name,
-      table_name,
-      table_primary_key,
       random_image_site_table_name,
       random_image_site_primary_key,
       random_image_site_sort_key,
-      user_reaction_table_name,
-      user_reaction_table_primary_key,
-      user_reaction_table_sort_key
     })
 
     // Create the API
     constructApi(this, {
       bucket_name,
       image_domain,
-      table_name,
-      table_primary_key,
       random_image_site_table_name,
       random_image_site_primary_key,
       random_image_site_sort_key,
-      user_reaction_table_name,
-      user_reaction_table_primary_key,
-      user_reaction_table_sort_key
     });
 
 
