@@ -32,6 +32,8 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     Ok(())
 }
 
+const HARDCODED_PREFIX: &str = "discord";
+
 #[instrument(skip_all)]
 async fn handler(
     environment_variables: &EnvironmentVariables, 
@@ -41,9 +43,9 @@ async fn handler(
     info!(event = ?req, "The req passed into the lambda is");
 
     let user_reaction_dao = UserReactionDao {
-        table_name: &environment_variables.user_reaction_table_name,
-        primary_key: &environment_variables.user_reaction_table_primary_key,
-        sort_key: &environment_variables.user_reaction_table_sort_key,
+        table_name: &environment_variables.table_name,
+        primary_key: &environment_variables.table_primary_key,
+        sort_key: &environment_variables.table_sort_key,
         dynamodb_client: &aws_clients.dynamodb_client,
     };
 
@@ -132,6 +134,7 @@ async fn handle_put(
 
     // Set the favorite image
     let old_favorite_image = user_reaction_dao.set_favorite(
+        HARDCODED_PREFIX,
         today_as_string, 
         uuid, 
         favorite_image
@@ -172,24 +175,24 @@ impl AwsClients {
 }
 
 struct EnvironmentVariables {
-    user_reaction_table_name: String,
-    user_reaction_table_primary_key: String,
-    user_reaction_table_sort_key: String,
+    table_name: String,
+    table_primary_key: String,
+    table_sort_key: String,
 }
 
 impl EnvironmentVariables {
     fn build() -> EnvironmentVariables {
-        let user_reaction_table_name = std::env::var("USER_REACTION_TABLE_NAME")
-            .expect("A USER_REACTION_TABLE_NAME must be provided");
-        let user_reaction_table_primary_key = std::env::var("USER_REACTION_TABLE_PRIMARY_KEY")
-            .expect("A USER_REACTION_TABLE_PRIMARY_KEY must be provided");
-        let user_reaction_table_sort_key = std::env::var("USER_REACTION_TABLE_SORT_KEY")
-            .expect("A USER_REACTION_TABLE_SORT_KEY must be provided");
+        let table_name = std::env::var("TABLE_NAME")
+            .expect("A TABLE_NAME must be provided");
+        let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
+            .expect("A TABLE_PRIMARY_KEY must be provided");
+        let table_sort_key = std::env::var("TABLE_SORT_KEY")
+            .expect("A TABLE_SORT_KEY must be provided");
 
         EnvironmentVariables {
-            user_reaction_table_name,
-            user_reaction_table_primary_key,
-            user_reaction_table_sort_key,
+            table_name,
+            table_primary_key,
+            table_sort_key,
         }
     }
 }

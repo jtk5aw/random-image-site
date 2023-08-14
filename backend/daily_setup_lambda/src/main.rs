@@ -30,6 +30,8 @@ async fn main() -> Result<(), Error> {
     })).await
 }
 
+const HARDCODED_PREFIX: &str = "discord";
+
 async fn function_handler(
     environment_variables: &EnvironmentVariables,
     aws_clients: &AwsClients,
@@ -42,9 +44,9 @@ async fn function_handler(
     let tomorrow_as_date_string = tomorrow_as_date.format("%Y-%m-%d").to_string();
 
     let user_reaction_dao = UserReactionDao {
-        table_name: &environment_variables.user_reaction_table_name,
-        primary_key: &environment_variables.user_reaction_table_primary_key,
-        sort_key: &environment_variables.user_reaction_table_sort_key,
+        table_name: &environment_variables.table_name,
+        primary_key: &environment_variables.table_primary_key,
+        sort_key: &environment_variables.table_sort_key,
         dynamodb_client: &aws_clients.dynamodb_client
     };
 
@@ -70,7 +72,7 @@ async fn function_handler(
 
     // Make request to set up counts. Lambda should also crash if this fails too
     // (May lead to image for tomorrow getting set twice but thatn's not a big deal)
-    user_reaction_dao.setup_counts(&tomorrow_as_date_string)
+    user_reaction_dao.setup_counts(HARDCODED_PREFIX, &tomorrow_as_date_string)
     .await
     .unwrap();
 
@@ -83,9 +85,6 @@ struct EnvironmentVariables {
     table_name: String,
     table_primary_key: String,
     table_sort_key: String,
-    user_reaction_table_name: String,
-    user_reaction_table_primary_key: String,
-    user_reaction_table_sort_key: String,
 }
 
 impl EnvironmentVariables {
@@ -98,21 +97,12 @@ impl EnvironmentVariables {
             .expect("A TABLE_PRIMARY_KEY must be set in this app's Lambda environment varialbes.");
         let table_sort_key = std::env::var("TABLE_SORT_KEY")
             .expect("A TABLE_SORT_KEY must be provided");
-        let user_reaction_table_name = std::env::var("USER_REACTION_TABLE_NAME")
-            .expect("A USER_REACTION_TABLE_NAME must be provided");
-        let user_reaction_table_primary_key = std::env::var("USER_REACTION_TABLE_PRIMARY_KEY")
-            .expect("A USER_REACTION_TABLE_PRIMARY_KEY must be provided");
-        let user_reaction_table_sort_key = std::env::var("USER_REACTION_TABLE_SORT_KEY")
-            .expect("A USER_REACTION_TABLE_SORT_KEY must be provided");
 
         EnvironmentVariables { 
             bucket_name, 
             table_name, 
             table_primary_key,
             table_sort_key,
-            user_reaction_table_name,
-            user_reaction_table_primary_key,
-            user_reaction_table_sort_key
         }
     }
 }

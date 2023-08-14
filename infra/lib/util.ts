@@ -64,9 +64,9 @@ export function constructApi(scope: Construct, props: BaseProps) {
         handler: 'not.required',
         environment: {
           RUST_BACKTRACE: '1',
-          USER_REACTION_TABLE_NAME: props.user_reaction_table_name,
-          USER_REACTION_TABLE_PRIMARY_KEY: props.user_reaction_table_primary_key,
-          USER_REACTION_TABLE_SORT_KEY: props.user_reaction_table_sort_key,
+          TABLE_NAME: props.random_image_site_table_name,
+          TABLE_PRIMARY_KEY: props.random_image_site_primary_key,
+          TABLE_SORT_KEY: props.random_image_site_sort_key,
         }
       });
   
@@ -85,9 +85,9 @@ export function constructApi(scope: Construct, props: BaseProps) {
         handler: 'not.required',
         environment: {
           RUST_BACKTRACE: '1',
-          USER_REACTION_TABLE_NAME: props.user_reaction_table_name,
-          USER_REACTION_TABLE_PRIMARY_KEY: props.user_reaction_table_primary_key,
-          USER_REACTION_TABLE_SORT_KEY: props.user_reaction_table_sort_key,
+          TABLE_NAME: props.random_image_site_table_name,
+          TABLE_PRIMARY_KEY: props.random_image_site_primary_key,
+          TABLE_SORT_KEY: props.random_image_site_sort_key,
         }
       });
   
@@ -133,9 +133,6 @@ export function constructEvents(scope: Construct, props: EventProps) {
       TABLE_NAME: props.random_image_site_table_name,
       TABLE_PRIMARY_KEY: props.random_image_site_primary_key,
       TABLE_SORT_KEY: props.random_image_site_sort_key,
-      USER_REACTION_TABLE_NAME: props.user_reaction_table_name,
-      USER_REACTION_TABLE_PRIMARY_KEY: props.user_reaction_table_primary_key,
-      USER_REACTION_TABLE_SORT_KEY: props.user_reaction_table_sort_key,
     }
   });
 

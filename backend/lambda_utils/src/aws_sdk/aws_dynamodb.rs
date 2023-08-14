@@ -6,11 +6,13 @@ use async_trait::async_trait;
 /** 
  * Util Functions for making calls to DynamoDB
  */
+#[derive(Debug)]
 pub struct KeyAndAttribute<'a> {
     pub key: &'a str,
     pub attribute: AttributeValue
 }
 
+#[derive(Debug)]
 pub struct KeyAndAttributeName<'a> {
     pub key: &'a str,
     pub attribute_name: &'a str

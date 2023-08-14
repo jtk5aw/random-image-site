@@ -45,6 +45,7 @@ impl From<String> for UserReactionDaoError {
 }
 
 const REACTION_COUNTS: &str = "ReactionCounts";
+const USER_PREFIX: &str = "user";
 
 // Struct of what can be retrieved from the table
 pub struct UserItems {
@@ -66,18 +67,24 @@ impl UserReactionDao<'_> {
     /// * `UserItems` - No errors can be thrown. Anything that can't be found will return a default
     pub async fn get(
         &self,
+        group: &str,
         today_as_string: &str,
         curr_uuid: &str
     ) -> UserItems {
         let keys_and_attributes = self.build_user_reaction_key_and_attribute(
+            group,
             today_as_string,
             curr_uuid,
         );
+
+        info!("TESTING TESTING: {:?}", keys_and_attributes);
     
         let get_item_from_key_result = self.dynamodb_client
             .get_item_from_keys(self.table_name, keys_and_attributes)
             .await
             .ok();
+
+        info!("TESTING TESTING {:?}", get_item_from_key_result);
     
         let reaction = match &get_item_from_key_result {
             Some(dynamo_map) => {
@@ -132,6 +139,7 @@ impl UserReactionDao<'_> {
     /// 
     pub async fn set_reaction(
         &self,
+        group: &str,
         today_as_string: &str,
         curr_uuid: &str,
         new_reaction: &Reactions,
@@ -140,6 +148,7 @@ impl UserReactionDao<'_> {
         new_reaction.is_active().then_some(()).ok_or("The provided reaction is deprecated".to_owned())?;
 
         let keys_and_attributes = self.build_user_reaction_key_and_attribute(
+            group,
             today_as_string,
             curr_uuid,
         );
@@ -187,11 +196,13 @@ impl UserReactionDao<'_> {
     /// 
     pub async fn set_favorite(
         &self,
+        group: &str,
         today_as_string: &str,
         curr_uuid: &str,
         new_image: &str,
     ) -> Result<String, UserReactionDaoError> {
         let keys_and_attributes = self.build_user_reaction_key_and_attribute(
+            group,
             today_as_string,
             curr_uuid,
         );
@@ -235,13 +246,14 @@ impl UserReactionDao<'_> {
     /// 
     pub async fn setup_counts(
         &self,
+        group: &str,
         today_as_string: &str,
     ) -> Result<(), UserReactionDaoError> {
-        let counts_keys_and_attributes = self.build_user_reaction_key_and_attribute(
+        let counts_keys_and_attributes = self.build_reaction_counts_key_and_attribute(
+            group,
             today_as_string,
-            REACTION_COUNTS,
         );
-    
+
         let starting_counts_map = Reactions::build_starting_counts();
     
         let counts_setup_attribute_values = vec![
@@ -276,17 +288,22 @@ impl UserReactionDao<'_> {
     /// 
     pub async fn get_counts(
         &self,
+        group: &str,
         today_as_string: &str,
     ) -> Result<HashMap<String, String>, UserReactionDaoError> {
-        let keys_and_attributes = self.build_user_reaction_key_and_attribute(
+        let keys_and_attributes = self.build_reaction_counts_key_and_attribute(
+            group,
             today_as_string,
-            REACTION_COUNTS,
         );
+
+        info!("TESTING TESTING: {:?}", keys_and_attributes);
     
         let get_counts_result = self.dynamodb_client.get_item_from_keys(
             self.table_name, 
             keys_and_attributes
         ).await?;
+
+        info!("TESTING TESTING: {:?}", get_counts_result);
     
         let counts = get_counts_result
             .get("Counts")
@@ -315,6 +332,7 @@ impl UserReactionDao<'_> {
     /// 
     pub async fn update_counts(
         &self,
+        group: &str,
         today_as_string: &str,
         old_reaction: &Reactions,
         new_reaction: &Reactions
@@ -325,15 +343,16 @@ impl UserReactionDao<'_> {
         // If the reactions are the same, return early
         if old_reaction_str == new_reaction_str {
             let curr_counts = self.get_counts(
+                group,
                 today_as_string
             ).await?;
             return Ok(curr_counts);
         }
 
         // Otherwise, update counts as necessary
-        let counts_keys_and_attributes = self.build_user_reaction_key_and_attribute(
+        let counts_keys_and_attributes = self.build_reaction_counts_key_and_attribute(
+            group,
             today_as_string,
-            REACTION_COUNTS,
         );
     
         let counts_expression_attribute_names = Some(vec![
@@ -364,7 +383,7 @@ impl UserReactionDao<'_> {
     
         ).await?;
     
-        info!("Request to update counts completed");
+        info!("Request to update counts completed: {:?}", update_counts_result);
     
         let updated_counts = update_counts_result
             .get("Counts")
@@ -379,24 +398,57 @@ impl UserReactionDao<'_> {
 
     fn build_user_reaction_key_and_attribute(
         &self,
+        group: &str,
         today_as_string: &str,
         user: &str,
     ) -> Vec<KeyAndAttribute> {
         vec![
             KeyAndAttribute {
                 key: self.primary_key,
-                attribute: AttributeValue::S(today_as_string.to_owned()),
+                attribute: AttributeValue::S(format_primary_key(group, today_as_string)),
             },
             KeyAndAttribute {
                 key: self.sort_key,
-                attribute: AttributeValue::S(user.to_owned()),
+                attribute: AttributeValue::S(format!(
+                    "{}#{}",
+                    USER_PREFIX.to_owned(),
+                    user.to_owned(),
+                )),
             },
         ]
-    }   
+    }
+
+    fn build_reaction_counts_key_and_attribute(
+        &self,
+        group: &str,
+        today_as_string: &str
+    ) -> Vec<KeyAndAttribute> {
+        vec![
+            KeyAndAttribute {
+                key: self.primary_key,
+                attribute: AttributeValue::S(format_primary_key(group, today_as_string)),
+            },
+            KeyAndAttribute {
+                key: self.sort_key,
+                attribute: AttributeValue::S(REACTION_COUNTS.to_owned()),
+            },
+        ]
+    }
 
 }
 
 /** Generate helper functions that don't require state */
+fn format_primary_key(
+    group: &str, 
+    date: &str,
+) -> String {
+    format!(
+        "{}_{}",
+        group,
+        date.to_string()
+    )
+}
+
 fn generate_numeric_counts(
     retrieved_counts: &HashMap<String, AttributeValue>
 ) -> HashMap<String, String> {
