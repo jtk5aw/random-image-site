@@ -17,11 +17,6 @@ export class InfraStack extends cdk.Stack {
     const random_image_site_table_name = 'random-image-site';
     const random_image_site_primary_key = 'pk';
     const random_image_site_sort_key = 'sk';
-    const table_name = 'image-info-table';
-    const table_primary_key = 'id';
-    const user_reaction_table_name = 'user-reaction-table';
-    const user_reaction_table_primary_key = 'date';
-    const user_reaction_table_sort_key = 'user'
     const web_app_domain = 'jtken.com';
     const image_domain = `images.${web_app_domain}`;
     
@@ -32,41 +27,6 @@ export class InfraStack extends cdk.Stack {
     });
 
     // Dynamo Tables
-    // TODO: Remove this table after merging
-    const imageInfoTable = new cdk.aws_dynamodb.Table(this, 'ImageInfoTable', {
-      tableName: table_name,
-      partitionKey: { name: table_primary_key, type: cdk.aws_dynamodb.AttributeType.STRING },
-      billingMode: cdk.aws_dynamodb.BillingMode.PROVISIONED
-    });
-
-    imageInfoTable.autoScaleReadCapacity({
-      minCapacity: 1, 
-      maxCapacity: 3,
-    });
-
-    imageInfoTable.autoScaleWriteCapacity({
-      minCapacity: 1, 
-      maxCapacity: 3,
-    });
-
-    // TODO: Remove this table after merging
-    const userReactionTable = new cdk.aws_dynamodb.Table(this, 'UserReactionTable', {
-      tableName: user_reaction_table_name,
-      partitionKey: { name: user_reaction_table_primary_key, type: cdk.aws_dynamodb.AttributeType.STRING },
-      sortKey: { name: user_reaction_table_sort_key, type: cdk.aws_dynamodb.AttributeType.STRING },
-      billingMode: cdk.aws_dynamodb.BillingMode.PROVISIONED
-    });
-
-    userReactionTable.autoScaleReadCapacity({
-      minCapacity: 1, 
-      maxCapacity: 3,
-    });
-
-    userReactionTable.autoScaleWriteCapacity({
-      minCapacity: 1, 
-      maxCapacity: 3,
-    });
-
     const randomImageSiteTable = new cdk.aws_dynamodb.Table(this, 'RandomImageSiteTable', {
       tableName: random_image_site_table_name,
       partitionKey: { name: random_image_site_primary_key, type: cdk.aws_dynamodb.AttributeType.STRING },
