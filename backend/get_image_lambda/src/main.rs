@@ -1,6 +1,6 @@
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use http::Method;
-use chrono::{Local, FixedOffset};
+use chrono::Local;
 use lambda_utils::persistence::image_dynamo_dao::ImageDynamoDao;
 use serde::Serialize;
 
@@ -37,6 +37,7 @@ const HARDCODED_PREFIX: &str = "discord";
 #[derive(Serialize, Default)]
 struct ResponseBody {
     url: String,
+    days_until_get_recents: i64,
     weekly_recap: Option<Vec<String>>,
 }
 
@@ -60,7 +61,7 @@ async fn handler(
         panic!("Only handle GET requests should not receive any other request type");
     }
 
-    let today = Local::now().with_timezone(&FixedOffset::east_opt(0).unwrap());
+    let today = Local::now().date_naive();
     let today_as_string = today.format("%Y-%m-%d").to_string();
 
     info!("Today is {:?}", today);
@@ -101,6 +102,7 @@ async fn handler(
 
             let response_body = ResponseBody {
                 url: format_image_url(&environment_variables.image_domain, &image.object_key),
+                days_until_get_recents: image.days_until_get_recents,
                 weekly_recap
             };
 

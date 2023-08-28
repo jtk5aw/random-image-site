@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use chrono::{DateTime, FixedOffset};
+use chrono::NaiveDate;
 use lambda_utils::persistence::{image_dynamo_dao::{ImageDynamoDao, ImageDynamoDaoError}, image_s3_dao::{ImageS3DaoError, ImageS3Dao}};
 
 use rand::seq::SliceRandom;
@@ -36,7 +36,7 @@ const HARDCODED_PREFIX: &str = "discord";
 
 #[instrument(skip_all)]
 pub async fn select_and_set_random_s3_object(
-    tomorrow: DateTime<FixedOffset>,
+    tomorrow: NaiveDate,
     image_dynamo_dao: &ImageDynamoDao<'_>,
     image_s3_dao: &ImageS3Dao<'_>,
 ) -> Result<String, SelectAndSetRandomObjectError> {
@@ -51,7 +51,15 @@ pub async fn select_and_set_random_s3_object(
     };
 
     // Get set of all object_keys and if there has been a get_recents call
-    let had_get_recents = list_of_images.iter().any(|image| image.get_recents);
+    let last_get_recent = list_of_images.iter().find(|image| image.get_recents);
+
+    let days_since_get_recents = last_get_recent.map_or(
+        0,
+        |last_get_recent| tomorrow
+            .signed_duration_since(last_get_recent.date)
+            .num_days()
+    );
+
     let set_of_recents = list_of_images.iter()
         .map(|image| image.object_key.to_owned())
         .collect::<HashSet<String>>();
@@ -80,7 +88,7 @@ pub async fn select_and_set_random_s3_object(
             HARDCODED_PREFIX,
             random_selected_object, 
             tomorrow, 
-            !had_get_recents
+            days_since_get_recents
         )
         .await
         .map_err(|err| {

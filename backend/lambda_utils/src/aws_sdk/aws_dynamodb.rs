@@ -3,6 +3,11 @@ use std::collections::HashMap;
 use aws_sdk_dynamodb::{Client as DynamoDbClient, types::{AttributeValue, ReturnValue, KeysAndAttributes}, operation::{get_item::{GetItemError, builders::GetItemFluentBuilder}, update_item::{UpdateItemError, builders::UpdateItemFluentBuilder}, batch_get_item::{builders::BatchGetItemFluentBuilder, BatchGetItemError}, put_item::{builders::PutItemFluentBuilder, PutItemError}}, error::SdkError as DynamoDbSdkError};
 use async_trait::async_trait;
 
+/**
+ * Shared constants
+ */
+pub const PK: &str = "pk";
+
 /** 
  * Util Functions for making calls to DynamoDB
  */

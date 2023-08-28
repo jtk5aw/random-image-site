@@ -1,4 +1,4 @@
-use chrono::{Duration, DateTime};
+use chrono::{Duration, NaiveDate};
 use daily_setup_lambda::select_and_set::select_and_set_random_s3_object;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
 use aws_sdk_dynamodb::Client as DynamoDbClient;
@@ -40,7 +40,7 @@ async fn function_handler(
     // Extract some useful information from the request
     info!(event = ?event, "The event passed into the lambda is");
 
-    let tomorrow_as_date = DateTime::parse_from_rfc3339(&event.time)? + Duration::days(1);
+    let tomorrow_as_date= NaiveDate::parse_from_str(&event.time, "%Y-%m-%dT%H:%M:%SZ")? + Duration::days(1);
     let tomorrow_as_date_string = tomorrow_as_date.format("%Y-%m-%d").to_string();
 
     let user_reaction_dao = UserReactionDao {
