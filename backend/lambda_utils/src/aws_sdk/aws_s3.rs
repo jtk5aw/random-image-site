@@ -75,8 +75,7 @@ impl S3Util for S3Client {
             .await?;
 
         let objects_list = list_objects_output
-            .contents()
-            .ok_or_else(|| "No List of returned values found".to_owned())?;
+            .contents();
 
         info!("Found {} objects", objects_list.len());
 

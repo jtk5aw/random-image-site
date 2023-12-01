@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use aws_sdk_dynamodb::{Client as DynamoDbClient, types::{AttributeValue, ReturnValue, KeysAndAttributes}, operation::{get_item::{GetItemError, builders::GetItemFluentBuilder}, update_item::{UpdateItemError, builders::UpdateItemFluentBuilder}, batch_get_item::{builders::BatchGetItemFluentBuilder, BatchGetItemError}, put_item::{builders::PutItemFluentBuilder, PutItemError}}, error::SdkError as DynamoDbSdkError};
 use async_trait::async_trait;
+use aws_sdk_dynamodb::error::BuildError;
 
 /**
  * Shared constants
@@ -30,6 +31,7 @@ pub enum DynamoDbUtilError {
     PutItemFailure(Box<DynamoDbSdkError<PutItemError>>),
     UpdateItemFailure(Box<DynamoDbSdkError<UpdateItemError>>),
     AttributeValueConversionFailure(AttributeValue),
+    OperationConstructionFailure(BuildError),
     LocalError(String),
 }
 
@@ -57,6 +59,12 @@ impl From<DynamoDbSdkError<UpdateItemError>> for DynamoDbUtilError {
     }
 }
 
+impl From<BuildError> for DynamoDbUtilError {
+    fn from(err: BuildError) -> Self {
+        Self::OperationConstructionFailure(err)
+    }
+}
+
 impl From<String> for DynamoDbUtilError {
     fn from(err: String) -> Self {
         Self::LocalError(err)
@@ -74,7 +82,7 @@ pub trait DynamoDbUtil {
         table_primary_key: &str,
         key: String
     ) -> Result<HashMap<String, AttributeValue>, DynamoDbUtilError>;
-
+ 
     async fn get_item_from_keys<'a>(
         &self,
         table_name: &str,
@@ -166,7 +174,7 @@ impl DynamoDbUtil for DynamoDbClient {
                     key_and_attribute.attribute
                 )]));
         }
-        let batch_get_keys_and_attributes = batch_get_keys_and_attributes.build();
+        let batch_get_keys_and_attributes = batch_get_keys_and_attributes.build()?;
 
         
         let batch_get_item_request = self
@@ -196,7 +204,7 @@ impl DynamoDbUtil for DynamoDbClient {
 
             batch_get_keys_and_attributes = batch_get_keys_and_attributes.keys(key_and_attribute_map);
         }
-        let batch_get_keys_and_attributes = batch_get_keys_and_attributes.build();
+        let batch_get_keys_and_attributes = batch_get_keys_and_attributes.build()?;
 
         
         let batch_get_item_request = self

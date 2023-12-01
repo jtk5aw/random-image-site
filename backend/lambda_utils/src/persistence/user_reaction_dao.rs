@@ -76,15 +76,11 @@ impl UserReactionDao<'_> {
             today_as_string,
             curr_uuid,
         );
-
-        info!("TESTING TESTING: {:?}", keys_and_attributes);
     
         let get_item_from_key_result = self.dynamodb_client
             .get_item_from_keys(self.table_name, keys_and_attributes)
             .await
             .ok();
-
-        info!("TESTING TESTING {:?}", get_item_from_key_result);
     
         let reaction = match &get_item_from_key_result {
             Some(dynamo_map) => {
@@ -295,15 +291,11 @@ impl UserReactionDao<'_> {
             group,
             today_as_string,
         );
-
-        info!("TESTING TESTING: {:?}", keys_and_attributes);
     
         let get_counts_result = self.dynamodb_client.get_item_from_keys(
             self.table_name, 
             keys_and_attributes
         ).await?;
-
-        info!("TESTING TESTING: {:?}", get_counts_result);
     
         let counts = get_counts_result
             .get("Counts")

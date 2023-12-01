@@ -1,3 +1,4 @@
+use aws_config::BehaviorVersion;
 use chrono::{Duration, NaiveDate};
 use daily_setup_lambda::select_and_set::select_and_set_random_s3_object;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
@@ -117,7 +118,7 @@ impl AwsClients {
     async fn build() -> AwsClients {
         // No extra configuration is needed as long as your Lambda has
         // the necessary permissions attached to its role.
-        let config = aws_config::load_from_env().await;
+        let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
 
         let s3_client = aws_sdk_s3::Client::new(&config);
         let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);

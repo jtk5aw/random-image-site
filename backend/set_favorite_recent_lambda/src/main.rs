@@ -1,3 +1,4 @@
+use aws_config::BehaviorVersion;
 use aws_lambda_events::http::Method;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use chrono::{FixedOffset, Local};
@@ -164,7 +165,7 @@ impl AwsClients {
     async fn build() -> AwsClients {
         // No extra configuration is needed as long as your Lambda has
         // the necessary permissions attached to its role.
-        let config = aws_config::load_from_env().await;
+        let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
 
         let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);
 

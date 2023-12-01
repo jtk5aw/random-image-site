@@ -1,5 +1,4 @@
-use aws_lambda_events::{encodings::Body, event::apigw::ApiGatewayProxyResponse};
-use http::header::HeaderMap;
+use aws_lambda_events::{encodings::Body, event::apigw::ApiGatewayProxyResponse, http::HeaderMap};
 
 /**
  * Struct used to create API Gateway response headers. 

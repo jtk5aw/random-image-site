@@ -326,12 +326,9 @@ fn parse_date_from_primary_key(
     value: &AttributeValue,
     default_date: NaiveDate
 ) -> NaiveDate {
-    info!(value=?value, "testing testing testing");
 
     let string_value = value.as_s().unwrap_or(&"".to_owned()).to_owned();
     let date_str = string_value.split("_").last().unwrap();
-
-    info!(date_str=date_str, "testing testing testing");
 
     NaiveDate::parse_from_str(date_str, "%Y-%m-%d").unwrap_or(default_date)
 }

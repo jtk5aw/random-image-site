@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use aws_config::BehaviorVersion;
 use chrono::Local;
-use http::Method;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use lambda_utils::{aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders, models::{Reactions, ReactionError}, persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError}};
 use log::{error, info, LevelFilter};
@@ -11,7 +11,7 @@ use simple_logger::SimpleLogger;
 
 use aws_lambda_events::{
     encodings::Body,
-    event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
+    event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse}, http::Method,
 };
 use lambda_runtime::{service_fn, LambdaEvent};
 use uuid::Uuid;
@@ -273,7 +273,7 @@ impl AwsClients {
     async fn build() -> AwsClients {
         // No extra configuration is needed as long as your Lambda has
         // the necessary permissions attached to its role.
-        let config = aws_config::load_from_env().await;
+        let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
 
         let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);
 

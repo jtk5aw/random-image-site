@@ -8,14 +8,14 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-aws_lambda_events = "0.10.0"
+aws_lambda_events = "0.12.1"
 chrono = "0.4.26"
-http = "0.2.4"
-strum = "0.24"
-strum_macros = "0.24.3"
+http = { version = "1.0.0" }
+strum = "0.25.0"
+strum_macros = "0.25.3"
 async-trait = "0.1.64"
-aws-sdk-s3 = "0.28.0"
-aws-sdk-dynamodb = "0.28.0"
+aws-sdk-s3 = "1.4.0"
+aws-sdk-dynamodb = "1.3.0"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
 
