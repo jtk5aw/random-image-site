@@ -3,6 +3,7 @@
 */node_modules
 *.env
 *.pem
+*.idea
 
 # local README (I'm concerned about putting the api to hit in plaintext so I'm not pushing it for now)
 README_LOCAL.md
