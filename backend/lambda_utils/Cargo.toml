@@ -18,7 +18,6 @@ aws-sdk-s3 = "1.4.0"
 aws-sdk-dynamodb = "1.3.0"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
+ureq = "2.8.0"
 
 log = "0.4"
-
-
