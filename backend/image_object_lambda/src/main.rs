@@ -1,5 +1,5 @@
 use aws_config::BehaviorVersion;
-use aws_lambda_events::event::s3::object_lambda::GetObjectContext;
+use aws_lambda_events::s3::object_lambda::S3ObjectLambdaEvent;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
 use lambda_utils::aws_sdk::aws_s3::S3Util;
 
@@ -15,7 +15,7 @@ async fn main() -> Result<(), Error> {
 
     let aws_clients = AwsClients::build().await;
 
-    run(service_fn(|request: LambdaEvent<GetObjectContext>| {
+    run(service_fn(|request: LambdaEvent<S3ObjectLambdaEvent>| {
         function_handler(&aws_clients, request)
     })).await
 }
@@ -24,16 +24,17 @@ async fn main() -> Result<(), Error> {
 
 async fn function_handler(
     aws_clients: &AwsClients,
-    event: LambdaEvent<GetObjectContext>
+    event: LambdaEvent<S3ObjectLambdaEvent>
 ) -> Result<(), Error> {
     // Get S3 Client
     let s3_client = &aws_clients.s3_client;
 
     // Extract some useful information from the request
+    let get_object_context = event.payload.get_object_context.expect("Did not provide a get_object_context");
 
-    let route = event.payload.output_route;
-    let token = event.payload.output_token;
-    let s3_url = event.payload.input_s3_url;
+    let route = get_object_context.output_route;
+    let token = get_object_context.output_token;
+    let s3_url = get_object_context.input_s3_url;
 
     tracing::info!("Request info, Route: {}, Token: {}, s3_url: {}", route, token, s3_url);
 
