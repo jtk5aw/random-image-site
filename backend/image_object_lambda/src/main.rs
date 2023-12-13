@@ -16,6 +16,7 @@ async fn main() -> Result<(), Error> {
     let aws_clients = AwsClients::build().await;
 
     run(service_fn(|request: LambdaEvent<S3ObjectLambdaEvent>| {
+        tracing::info!("Request received: {:?}", request);
         function_handler(&aws_clients, request)
     })).await
 }
