@@ -1259,20 +1259,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "image_object_lambda"
-version = "0.1.0"
-dependencies = [
- "aws-config",
- "aws-sdk-s3",
- "aws_lambda_events",
- "lambda_runtime",
- "lambda_utils",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -19,8 +19,6 @@ export class InfraStack extends cdk.Stack {
     const random_image_site_sort_key = 'sk';
     const web_app_domain = 'jtken.com';
     const image_domain = `images.${web_app_domain}`;
-    const image_access_point_name = 'image-access-point';
-    const image_s3_object_lambda_access_point_name = 's3-object-lambda-access-point';
 
     // Storage resources //
 
@@ -28,16 +26,9 @@ export class InfraStack extends cdk.Stack {
 
     const { 
       bucket,
-      objectLambdaAccessPoint
      } = constructS3(this, {
-      account: this.account,
-      region: this.region,
       bucket_name,
-      access_point_name: image_access_point_name,
-      s3_object_lambda_access_point_name: image_s3_object_lambda_access_point_name
     });
-
-    const objectLambdaAccessPointDomainName = `${image_s3_object_lambda_access_point_name}-${this.account}.s3-object-lambda.${this.region}.amazonaws.com`;
 
     // Dynamo Tables
     const randomImageSiteTable = new cdk.aws_dynamodb.Table(this, 'RandomImageSiteTable', {
@@ -96,8 +87,6 @@ export class InfraStack extends cdk.Stack {
      * that allow all CloudFront distributions from this account access. Also need to make sure that OAC is set up for the given bucket 
      * On top of this, the CloudFront distribution itself needs to be edited to use OAC set up for the given bucket. 
      * 
-     * Then, for the S3 Object Lambda access point go to the Object Lambda Access Policy and make sure there is a policy there that gives
-     * CloudFront distributions from this account access as well. 
      */
     // TODO: Make the above no longer true and have it update automatically
     const imageDistribution = new cloudfront.CloudFrontWebDistribution(this, 'ImageDistribution', {
@@ -109,22 +98,12 @@ export class InfraStack extends cdk.Stack {
       originConfigs: [{
         customOriginSource: {
           domainName: bucket.bucketDomainName,
-          originProtocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY
+          originProtocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY
         },
         behaviors: [{
           isDefaultBehavior: true
         }]
-      }, { 
-        customOriginSource: {
-          domainName: objectLambdaAccessPointDomainName,
-          originProtocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY
-        },
-        behaviors: [{
-          allowedMethods: cloudfront.CloudFrontAllowedMethods.GET_HEAD,
-          pathPattern: '/image',
-        }]
-      }
-      ]
+      }]
     });
 
     new route53.ARecord(this, 'ImageRecord', {

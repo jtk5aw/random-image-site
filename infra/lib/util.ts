@@ -3,23 +3,16 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apiGateway from 'aws-cdk-lib/aws-apigateway';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as s3ObjectLambda from 'aws-cdk-lib/aws-s3objectlambda';
 import { Construct } from 'constructs';
 import { Duration } from 'aws-cdk-lib';
 
 interface S3Props {
-  account: string;
-  region: string;
   bucket_name: string;
-  access_point_name: string;
-  s3_object_lambda_access_point_name: string;
 }
 
 interface S3Output {
   bucket: s3.Bucket;
-  objectLambdaAccessPoint: s3ObjectLambda.CfnAccessPoint;
 }
 
 const BACKEND_BASE_DIR = '../backend/target/lambda/'
@@ -35,82 +28,15 @@ export function constructS3(scope: Construct, props: S3Props) : S3Output {
    * I don't think that CDK supports setting this up (OAC) right now and I don't think it
    * detects policy changes in drift either so this is a bit of an inference. 
    * 
-   * I also had to make some manual policy changes to give the access point access. Based on 
-   * the docs here: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/DownloadDistS3AndCustomOrigins.html#using-S3-Object-Lambda
    */
-
 
   const bucket = new s3.Bucket(scope, 'TestBucket', {
     bucketName: props.bucket_name,
     publicReadAccess: false,
   });
 
-  const imageObjectLambda = new lambda.Function(scope, 'ImageObjectLambda', {
-    functionName: 'ImageObjectLambda',
-    code: lambda.Code.fromAsset(
-      getLambdaPath('image_object_lambda'),
-    ),
-    runtime: lambda.Runtime.PROVIDED_AL2,
-    architecture: lambda.Architecture.ARM_64,
-    handler: 'not.required',
-    environment: {
-      RUST_BACKTRACE: '1',
-    }
-  });
-
-  imageObjectLambda.addToRolePolicy(new iam.PolicyStatement({
-    resources: ['*'],
-    actions: ['s3-object-lambda:WriteGetObjectResponse']
-  }));
-
-  imageObjectLambda.addPermission('invocationRestriction', {
-    action: 'lambda:InvokeFunction',
-    principal: new iam.ServicePrincipal('cloudfront.amazonaws.com'),
-  });
-
-  const accessPointArn = `arn:aws:s3:${props.region}:${props.account}:accesspoint/${props.access_point_name}`;
-
-  const cfnAccessPoint = new s3.CfnAccessPoint(scope, 'ImagesCfnAccessPoint', {
-    bucket: props.bucket_name,
-  
-    // the properties below are optional
-    bucketAccountId: props.account,
-    name: props.access_point_name,
-    policy: new iam.PolicyDocument({
-      statements: [
-        new iam.PolicyStatement({
-          sid: 'AllowLambdaToUseAccessPoint',
-          effect: iam.Effect.ALLOW,
-          actions: ['s3:GetObject'],
-          principals: [
-            new iam.ArnPrincipal(<string>imageObjectLambda.role?.roleArn)
-          ],
-          resources: [`${accessPointArn}/object/*`]
-        }),
-        // TODO: Determine if need to add additinoal cloudfront policy
-      ]
-    }),
-  });
-
-  // Access point to receive GET request and use lambda to process objects
-  const objectLambdaAccessPoint = new s3ObjectLambda.CfnAccessPoint(scope, 's3ObjectLambdaAccessPoint', {
-    name: props.s3_object_lambda_access_point_name,
-    objectLambdaConfiguration: {
-      supportingAccessPoint: accessPointArn,
-      transformationConfigurations: [{
-        actions: ['GetObject'],
-        contentTransformation: {
-          'AwsLambda': {
-            'FunctionArn': `${imageObjectLambda.functionArn}`
-          }
-        }
-      }]
-    },
-  });
-
   return {
     bucket,
-    objectLambdaAccessPoint
   };
 }
 
