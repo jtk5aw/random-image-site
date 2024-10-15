@@ -15,3 +15,6 @@ README_LOCAL.md
 */.cdk.staging
 */cdk.out
 */infra/dist/*
+
+# SST
+.sst
