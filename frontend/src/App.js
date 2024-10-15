@@ -135,7 +135,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
 
   return (
     <div className='min-w-screen min-h-screen text-white bg-black'>
-      <div className='flex justify-between items-center w-screen font-serif p-1 text-4xl'> 
+      <div className='flex justify-between items-center w-screen max-w-screen-md font-serif p-1 text-4xl'> 
         <p>
           ForMaeov
         </p>
@@ -216,7 +216,7 @@ const Content = ({showSlider, weeklyRecap, currFavoriteUrl, onRecapClick, imageU
 }
 
 const Image = ({imageUrl, currReaction, currReactionCounts, currFavoriteUrl, showRecentFavorites, onEmojiClick, onToggleRecentImagesClick}) => {
-  return <div>
+  return <div className='max-w-screen-md'>
     <DailyImage url={imageUrl} alt={"todays pic"} />
     <ReactionCounts 
       currReactionCounts={currReactionCounts} 
