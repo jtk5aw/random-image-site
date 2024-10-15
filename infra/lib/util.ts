@@ -55,7 +55,7 @@ export function constructApi(scope: Construct, props: ApiProps) {
         code: lambda.Code.fromAsset(
           getLambdaPath('get_image_lambda'),
         ),
-        runtime: lambda.Runtime.PROVIDED_AL2,
+        runtime: lambda.Runtime.PROVIDED_AL2023,
         architecture: lambda.Architecture.ARM_64,
         handler: 'not.required',
         environment: {
@@ -82,7 +82,7 @@ export function constructApi(scope: Construct, props: ApiProps) {
         code: lambda.Code.fromAsset(
           getLambdaPath('get_or_set_reaction_lambda'),
         ),
-        runtime: lambda.Runtime.PROVIDED_AL2,
+        runtime: lambda.Runtime.PROVIDED_AL2023,
         architecture: lambda.Architecture.ARM_64,
         handler: 'not.required',
         environment: {
@@ -103,7 +103,7 @@ export function constructApi(scope: Construct, props: ApiProps) {
         code: lambda.Code.fromAsset(
           getLambdaPath('set_favorite_recent_lambda'),
         ),
-        runtime: lambda.Runtime.PROVIDED_AL2,
+        runtime: lambda.Runtime.PROVIDED_AL2023,
         architecture: lambda.Architecture.ARM_64,
         handler: 'not.required',
         environment: {
@@ -147,7 +147,7 @@ export function constructEvents(scope: Construct, props: EventProps) {
     code: lambda.Code.fromAsset(
       getLambdaPath('daily_setup_lambda'),
     ),
-    runtime: lambda.Runtime.PROVIDED_AL2,
+    runtime: lambda.Runtime.PROVIDED_AL2023,
     architecture: lambda.Architecture.ARM_64,
     handler: 'not.required',
     environment: {
