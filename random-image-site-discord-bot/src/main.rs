@@ -1,20 +1,24 @@
-use std::collections::{HashMap};
-use std::io::{Error as StdIoError};
+use std::collections::HashMap;
+use std::io::Error as StdIoError;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use aws_sdk_s3::error::PutObjectError;
-use aws_sdk_s3::types::{SdkError as S3SdkError, ByteStream};
+use aws_config::BehaviorVersion;
+use aws_sdk_s3::error::SdkError as S3SdkError;
+use aws_sdk_s3::operation::put_object::PutObjectError;
+use aws_sdk_s3::primitives::ByteStream;
 use image::{DynamicImage, ImageError};
-use random_image_site_discord_bot::type_map_keys::{AcceptedChannels, AcceptedChannelsTrait, AwsClients, AwsClientsContainer, IMAGE_BUCKET_NAME};
-use reqwest::{Error as ReqwestError};
-use serenity::{async_trait, Client};
+use random_image_site_discord_bot::type_map_keys::{
+    AcceptedChannels, AcceptedChannelsTrait, AwsClients, AwsClientsContainer, IMAGE_BUCKET_NAME,
+};
+use reqwest::Error as ReqwestError;
 use serenity::client::EventHandler;
-use serenity::framework::standard::macros::{hook, group, command};
+use serenity::framework::standard::macros::{command, group, hook};
+use serenity::framework::standard::{CommandResult, StandardFramework};
 use serenity::model::channel::Message;
-use serenity::framework::standard::{StandardFramework, CommandResult};
-use serenity::prelude::{GatewayIntents, Context};
-use tracing::{info_span, info, error, instrument};
+use serenity::prelude::{Context, GatewayIntents};
+use serenity::{async_trait, Client};
+use tracing::{error, info, info_span, instrument};
 use uuid::Uuid;
 
 #[group]
@@ -25,6 +29,7 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {}
 
+// TODO: Move this to use SST linking
 const DISCORD_SECRET_ID: &str = "discord_api_token";
 
 #[tokio::main]
@@ -36,7 +41,7 @@ async fn main() {
 
     info!("Initialized tracing");
 
-    let config: aws_config::SdkConfig = aws_config::load_from_env().await;
+    let config: aws_config::SdkConfig = aws_config::load_defaults(BehaviorVersion::latest()).await;
     let secretsmanager_client = aws_sdk_secretsmanager::Client::new(&config);
     let token = secretsmanager_client
         .get_secret_value()
@@ -47,8 +52,8 @@ async fn main() {
             |err| {
                 error!(error = %err, "Failed to fetch the secret.");
                 "bad_token".to_owned()
-            }, 
-            |token| token.secret_string().unwrap().to_owned()
+            },
+            |token| token.secret_string().unwrap().to_owned(),
         );
 
     info!("Fetched discord bot token");
@@ -65,7 +70,7 @@ async fn main() {
 
     // Put in its own block to keep the write lock that data has open for as little time as possible
     // Idea is to minimize chance of deadlocks. Don't think its necessary here, think its just best practice
-    { 
+    {
         let mut data = client.data.write().await;
 
         data.insert::<AcceptedChannels>(Arc::new(Mutex::new(HashMap::default())));
@@ -77,7 +82,7 @@ async fn main() {
         let mut data = client.data.write().await;
         data.insert::<AwsClients>(Arc::new(AwsClientsContainer {
             s3: s3_client,
-            secrets_manager: secretsmanager_client
+            secrets_manager: secretsmanager_client,
         }));
     }
 
@@ -100,21 +105,23 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 async fn message(ctx: &Context, msg: &Message) {
     let span = info_span!("message");
     let _guard = span.enter();
-    
+
     info!(message_id = %msg.id);
 
     if !AcceptedChannels::accepted_channel(ctx, msg).await {
         info!(channel_id = %msg.channel_id, "Message not in the #images channel. Ignoring.");
         return;
     }
-    
+
     info!(channel_id = %msg.channel_id, "Message is in the #images channel. Processing.");
 
     info!(message = ?msg);
 
     match get_attachment(ctx, msg).await {
         Ok(dynamic_image) => process_image(ctx, msg, dynamic_image).await,
-        Err(GetAttachmentError::NoAttachmentError(_)) => info!("No attachment. No processing necessary."),
+        Err(GetAttachmentError::NoAttachmentError(_)) => {
+            info!("No attachment. No processing necessary.")
+        }
         Err(err) => {
             error!(error = ?err, "Failed to process the given attachment.");
         }
@@ -125,7 +132,7 @@ async fn message(ctx: &Context, msg: &Message) {
 pub enum GetAttachmentError {
     LoadImageError(ImageError),
     GetImageError(ReqwestError),
-    NoAttachmentError(String)
+    NoAttachmentError(String),
 }
 
 impl From<String> for GetAttachmentError {
@@ -148,15 +155,14 @@ impl From<ImageError> for GetAttachmentError {
 
 #[instrument(skip_all)]
 async fn get_attachment(_ctx: &Context, msg: &Message) -> Result<DynamicImage, GetAttachmentError> {
-    let attachment = msg.attachments.first()
+    let attachment = msg
+        .attachments
+        .first()
         .ok_or_else(|| "No attachment found".to_owned())?;
 
     info!("Received an attachment from the provided message");
 
-    let image_bytes = reqwest::get(&attachment.url)
-        .await?
-        .bytes()
-        .await?;
+    let image_bytes = reqwest::get(&attachment.url).await?.bytes().await?;
 
     info!("Fetched the provided attachment from its url");
 
@@ -171,13 +177,25 @@ async fn process_image(ctx: &Context, msg: &Message, image: DynamicImage) {
     match upload_image(ctx, image).await {
         Ok(()) => {
             info!("Processed the image successfully");
-            if let Err(err) = msg.reply(ctx, "This iamge was successfuly processed!").await {
+            if let Err(err) = msg
+                .reply(ctx, "This iamge was successfuly processed!")
+                .await
+            {
                 error!(error = %err, "Failed to reply to the message indicating it was processed successfully");
             };
-        },
+        }
         Err(processing_error) => {
             error!("Failed to process the image");
-            if let Err(reply_error) = msg.reply(ctx, format!("There was an error processing this attachemtn: {:?}", processing_error)).await {
+            if let Err(reply_error) = msg
+                .reply(
+                    ctx,
+                    format!(
+                        "There was an error processing this attachemtn: {:?}",
+                        processing_error
+                    ),
+                )
+                .await
+            {
                 error!(error = %reply_error, "Failed to reply to the message indicating it was not processed");
             }
         }
@@ -213,7 +231,9 @@ async fn upload_image(ctx: &Context, dynamic_image: DynamicImage) -> Result<(), 
     // Get the S3 Client to be used for writing
     let s3_client = {
         let data_read = ctx.data.read().await;
-        let aws_clients_container = data_read.get::<AwsClients>().expect("Expected AwsClientsContainer in TypeMap");
+        let aws_clients_container = data_read
+            .get::<AwsClients>()
+            .expect("Expected AwsClientsContainer in TypeMap");
         aws_clients_container.s3.clone()
     };
 
@@ -227,10 +247,14 @@ async fn upload_image(ctx: &Context, dynamic_image: DynamicImage) -> Result<(), 
     // TODO: Remove this unwrap
     let body = ByteStream::from_path(Path::new(&file_name)).await.unwrap();
 
-    info!(image_name = &file_name, "Sucessfully converted the image to JPG and got the image as bytes.");
+    info!(
+        image_name = &file_name,
+        "Sucessfully converted the image to JPG and got the image as bytes."
+    );
 
     // Attempt to upload to S3
-    let put_object_output = s3_client.put_object()
+    let put_object_output = s3_client
+        .put_object()
         .bucket(IMAGE_BUCKET_NAME)
         .key(&file_name)
         .content_type("image/jpeg")
@@ -245,6 +269,6 @@ async fn upload_image(ctx: &Context, dynamic_image: DynamicImage) -> Result<(), 
 
     match put_object_output {
         Ok(_) => Ok(()),
-        Err(error) => Err(UploadError::from(error))
+        Err(error) => Err(UploadError::from(error)),
     }
 }
