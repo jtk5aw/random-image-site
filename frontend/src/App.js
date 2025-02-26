@@ -5,6 +5,7 @@ import './App.css';
 import axios from 'axios';
 import React, { useState, useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQuery } from 'react-query';
+import ErrorBanner from './components/ErrorBanner/ErrorBanner';
 import Selector from './components/Reactions/Selector';
 import ReactionCounts from './components/Reactions/ReactionCounts';
 import DailyImage from './components/DailyImage/Image';
@@ -52,6 +53,8 @@ function Page() {
 }
 
 const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
+  const [error, setError] = useState(null);
+
   const [todaysImage, setTodaysImage] = useState(null);
 
   const [currUuid, setCurrUuid] = useState(null);
@@ -106,23 +109,32 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   // On emoji press, update the reaction
   const onEmojiClick = (uuid) => (reaction) => {
     const reactionToSend = reaction === currReaction ? NO_REACTION : reaction; 
+    setCurrReaction(reactionToSend)
 
+    // TODO TODO TODO: Add a failure banner when the call fails
     axios.put(TODAYS_METADATA_ENDPOINT, {'reaction': reactionToSend, 'uuid': uuid})
     .then(res => {
       // Means the put was successful
-      setCurrReaction(reactionToSend)
       setCurrReactionCounts(res.data.counts)
     })
+    .catch(err => {
+      // Set error message
+      setError('Failed to update reaction.');
+      console.error('Error updating reaction:', err);
+    });
   }
 
   // On recap image press, update the favorite URL 
   const onRecapClick = (uuid) => (url) => {
     const urlToSend = url === currFavoriteUrl ? '' : url;
+    // Assume the call will succeed 
+    setCurrFavoriteUrl(urlToSend);
     axios.put(SET_FAVORITE_ENDPOINT, {'favorite_image': urlToSend, 'uuid': uuid })
-    .then(res => {
-      // Means the put call was successful 
-      setCurrFavoriteUrl(urlToSend);
-    })
+    .catch(err => {
+      // Set error message
+      setError('Failed to update favorite.');
+      console.error('Error updating favorite:', err);
+    });
   }
 
   // On Recent Image button click, toggle screen viewed
@@ -144,6 +156,7 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
           className='text-left bg-black h-20 w-20'
           alt="Human heart" />
       </div>
+      {error && <ErrorBanner errorMessage={error} onClose={() => setError(null)} />}
       <AppBody 
             todaysImageLoading={todaysImageResponse.isLoading}
             todaysMetadataLoading={todaysMetadataResponse.isLoading}
