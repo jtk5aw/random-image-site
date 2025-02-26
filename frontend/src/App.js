@@ -146,14 +146,14 @@ const SubPage = ({ todaysImageResponse, todaysMetadataResponse }) => {
   const showRecentFavorites = (currReaction, showSlider) => weeklyRecap !== null && hasReacted(currReaction) && !showSlider;
 
   return (
-    <div className='min-w-screen min-h-screen text-white bg-black'>
+    <div className='min-w-screen min-h-screen text-white bg-noise-dark'>
       <div className='flex justify-between items-center w-screen max-w-screen-md font-serif p-1 text-4xl'> 
         <p>
           ForMaeov
         </p>
         <img 
           src={heart} 
-          className='text-left bg-black h-20 w-20'
+          className='text-left bg-transparent h-20 w-20'
           alt="Human heart" />
       </div>
       {error && <ErrorBanner errorMessage={error} onClose={() => setError(null)} />}
