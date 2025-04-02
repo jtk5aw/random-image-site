@@ -1,4 +1,5 @@
 /// <reference path="./.sst/platform/config.d.ts" />
+
 export default $config({
   app(input) {
     return {
@@ -15,17 +16,14 @@ export default $config({
   },
   async run() {
     await discordBot($app);
-    await remixApp();
+    await mobileApi(authServer);
   },
 });
 
-async function remixApp() {
-  const bucket = new sst.aws.Bucket("RemixTestBucket", {
-    access: "public",
-  });
-  new sst.aws.Remix("MyWeb", {
-    link: [bucket],
-    path: "remix",
+async function mobileApi() {
+  const backendFunction = new sst.aws.Function("BackendFunction", {
+    handler: "mobile-backend/index.handler",
+    url: true,
   });
 }
 
