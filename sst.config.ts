@@ -16,14 +16,16 @@ export default $config({
   },
   async run() {
     await discordBot($app);
-    await mobileApi(authServer);
+    await mobileApi();
   },
 });
 
 async function mobileApi() {
+  const bucket = new sst.aws.Bucket("InitialUploadBucket");
   const backendFunction = new sst.aws.Function("BackendFunction", {
-    handler: "mobile-backend/index.handler",
+    handler: "packages/mobile-backend/index.handler",
     url: true,
+    link: [bucket],
   });
 }
 

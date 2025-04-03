@@ -1,7 +1,12 @@
 {
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.779.0",
+    "@aws-sdk/s3-request-presigner": "^3.779.0",
+    "@hono/zod-validator": "^0.4.3",
+    "@openauthjs/openauth": "^0.4.3",
     "hono": "^4.7.5",
     "jsonwebtoken": "^9.0.2",
-    "sst": "^3.11.21"
+    "sst": "^3.11.21",
+    "valibot": "^1.0.0"
   }
 }
