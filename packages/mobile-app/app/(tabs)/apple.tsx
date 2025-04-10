@@ -10,51 +10,12 @@ const client = hc<AppType>(
   "https://zsqsgmp3bajrmuq6tmqm5frzfy0btrtq.lambda-url.us-west-1.on.aws",
 );
 
-// TODO: WARNING: Shouldn't be using AsyncStorage for a user cred like this
-// need to put that into encrypted storage instead
-//
-// TODO TODO TODO: Need to do what's laid out here:
-// https://stackoverflow.com/questions/78549427/how-do-i-refresh-my-apple-login-in-my-react-native-app-without-user-prompt-and
-// Once I get the token here on the front end I need to send that to the backend to do the requesting. In order to do that I need to onboard to
-// get a client secret
-// I have the cert in my downloads folder and I'll have to use it to make a jwt to call apple with here https://stackoverflow.com/questions/78549427/how-do-i-refresh-my-apple-login-in-my-react-native-app-without-user-prompt-and
-async function makeRequest(credential: string) {
-  try {
-    const response = await client.test.apple.$post({
-      header: { authorization: "Bearer " + credential },
-      json: {},
-    });
-
-    // Check if response is ok (status 200-299)
-    if (!response.ok) {
-      const result = await response.json();
-      throw new Error(
-        `HTTP error! Status: ${response.status} - ${JSON.stringify(result)}`,
-      );
-    }
-
-    // Get content type from headers
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      throw new Error(`Bad Output returned. Not json`);
-    }
-
-    // Handle JSON response
-    const result = await response.json();
-    console.log("name is: " + result.name);
-
-    console.log(result);
-    return result;
-  } catch (err) {
-    console.log(err);
-    return null;
-  }
-}
+// TODO TODO TODO: Need to use SecureStorage instead of AsyncStorage
 
 async function makeJunkLoginCall() {
   const result = await client.login.$post({
     header: {
-      identity_token: "token",
+      apple_token: "token",
     },
   });
   console.log(await result.json());
@@ -102,7 +63,7 @@ export default function App() {
         setCredential(appleCredential.identityToken);
         const result = await client.login.$post({
           header: {
-            identity_token: appleCredential.identityToken,
+            apple_token: appleCredential.identityToken,
           },
         });
         console.log(await result.json());
@@ -176,10 +137,6 @@ export default function App() {
           <Button
             title="Make Junk Login Call"
             onPress={() => makeJunkLoginCall()}
-          />
-          <Button
-            title="Make API Request"
-            onPress={() => makeRequest(credential)}
           />
           <Button
             title="Refresh api key"

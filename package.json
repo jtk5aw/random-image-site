@@ -1,7 +1,7 @@
 {
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.782.0",
-    "@aws-sdk/client-s3": "^3.779.0",
+    "@aws-sdk/lib-dynamodb": "^3.782.0",
     "@aws-sdk/s3-request-presigner": "^3.779.0",
     "@aws-sdk/util-dynamodb": "^3.786.0",
     "@hono/zod-validator": "^0.4.3",
