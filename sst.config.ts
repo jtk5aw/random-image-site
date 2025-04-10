@@ -21,11 +21,29 @@ export default $config({
 });
 
 async function mobileApi() {
+  const authTokenSecret = new sst.Secret("AuthTokenSecret");
+  const refreshTokenSecret = new sst.Secret("RefreshTokenSecret");
+  const userTable = new sst.aws.Dynamo("UserTable", {
+    fields: {
+      pk: "string",
+      sk: "string",
+    },
+    primaryIndex: { hashKey: "pk", rangeKey: "sk" },
+    transform: {
+      table: {
+        billingMode: "PROVISIONED",
+        readCapacity: 20,
+        writeCapacity: 20,
+      },
+    },
+  });
+
   const bucket = new sst.aws.Bucket("InitialUploadBucket");
+
   const backendFunction = new sst.aws.Function("BackendFunction", {
     handler: "packages/mobile-backend/index.handler",
     url: true,
-    link: [bucket],
+    link: [bucket, userTable, authTokenSecret, refreshTokenSecret],
   });
 }
 

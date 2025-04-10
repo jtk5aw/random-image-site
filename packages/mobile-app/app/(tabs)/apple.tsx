@@ -7,7 +7,7 @@ import { AppType } from "../../../mobile-backend";
 const { hc } = require("hono/dist/client") as typeof import("hono/client");
 
 const client = hc<AppType>(
-  "https://qhwiwogppcugivxw6ctskiv33a0wceer.lambda-url.us-west-1.on.aws",
+  "https://zsqsgmp3bajrmuq6tmqm5frzfy0btrtq.lambda-url.us-west-1.on.aws",
 );
 
 // TODO: WARNING: Shouldn't be using AsyncStorage for a user cred like this
@@ -51,6 +51,15 @@ async function makeRequest(credential: string) {
   }
 }
 
+async function makeJunkLoginCall() {
+  const result = await client.login.$post({
+    header: {
+      identity_token: "token",
+    },
+  });
+  console.log(await result.json());
+}
+
 export default function App() {
   const [credential, setCredential] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -81,14 +90,22 @@ export default function App() {
   ) => {
     try {
       const appleCredential = await credentialPromise;
+      console.log(appleCredential);
       if (appleCredential.user) {
         await AsyncStorage.setItem("user", appleCredential.user);
       }
+      // delete this if block its useless
       if (appleCredential.identityToken) {
         // Store credential token
         await AsyncStorage.setItem("credential", appleCredential.identityToken);
         // Update state
         setCredential(appleCredential.identityToken);
+        const result = await client.login.$post({
+          header: {
+            identity_token: appleCredential.identityToken,
+          },
+        });
+        console.log(await result.json());
       }
     } catch (e) {
       if (e.code === "ERR_REQUEST_CANCELED") {
@@ -152,7 +169,14 @@ export default function App() {
     <View style={styles.container}>
       {credential ? (
         <View>
-          <Text style={styles.text}>You are authenticated!</Text>
+          <Button
+            title="Does nothing lolz"
+            onPress={() => console.log("lolz")}
+          />
+          <Button
+            title="Make Junk Login Call"
+            onPress={() => makeJunkLoginCall()}
+          />
           <Button
             title="Make API Request"
             onPress={() => makeRequest(credential)}
