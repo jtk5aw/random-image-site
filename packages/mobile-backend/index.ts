@@ -1,9 +1,9 @@
 import * as jwt from "jsonwebtoken";
 import * as crypto from "crypto";
-import { Hono } from "hono";
+import { Hono, ValidationTargets } from "hono";
 import { handle } from "hono/aws-lambda";
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
+import { z, ZodSchema } from "zod";
 import {
   ConditionalCheckFailedException,
   DynamoDBClient,
@@ -12,11 +12,38 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { Resource } from "sst";
+import { bearerAuth } from "hono/bearer-auth";
+import { createMiddleware } from "hono/factory";
 
-// TODO TODO TODO: Need to implement a refresh token endpoint
-// Then need to set up an endpoint that validates the access token
-// Then once that is set up, need to implement auto-refreshing credentials
-// when calls are made with bad credentials
+// Customized zodValidator
+class ValidationError extends Error {
+  private details: any;
+  constructor(details: any) {
+    super(details);
+    this.details = details;
+
+    // Set the prototype explicitly.
+    Object.setPrototypeOf(this, ValidationError.prototype);
+  }
+
+  getDetails() {
+    return this.details;
+  }
+}
+
+export const zv = <T extends ZodSchema, Target extends keyof ValidationTargets>(
+  target: Target,
+  schema: T,
+) =>
+  zValidator(target, schema, (result, c) => {
+    if (result.success == false) {
+      const errorDetails = result.error.errors.map((e) => ({
+        path: JSON.stringify(e.path.join(".")),
+        message: e.message,
+      }));
+      throw new ValidationError(errorDetails);
+    }
+  });
 
 // Global auth middleware
 const APPLE_URL = "https://appleid.apple.com/auth/keys";
@@ -34,10 +61,22 @@ type Result<T> =
   | { success: true; value: T }
   | { success: false; message: string };
 
+function unsuccessful<T>(message: string): Result<T> {
+  return { success: false, message };
+}
+
+function successful<T>(value: T): Result<T> {
+  return { success: true, value };
+}
+
 type Issuer = "randomimagesite";
 type AuthProviders = "apple";
 
-async function getSigningKey(kid: string): Promise<Result<crypto.KeyObject>> {
+/// Functions for verifying Apple Tokens ///
+// TODO: See if this can be abstracted for verifying my tokens as well
+async function getAppleSigningKey(
+  kid: string,
+): Promise<Result<crypto.KeyObject>> {
   const response = await fetch(APPLE_URL);
   if (!response.ok) {
     return {
@@ -46,7 +85,7 @@ async function getSigningKey(kid: string): Promise<Result<crypto.KeyObject>> {
     };
   }
   const { keys } = await response.json();
-  const key = keys.find((key) => key.kid === kid);
+  const key = keys.find((key: any) => key.kid === kid);
   if (!key) {
     return { success: false, message: "Key not found" };
   }
@@ -57,7 +96,9 @@ async function getSigningKey(kid: string): Promise<Result<crypto.KeyObject>> {
   };
 }
 
-async function validatePayloadValues(payload): Promise<Result<undefined>> {
+async function validateApplePayloadValues(
+  payload: any,
+): Promise<Result<undefined>> {
   if (!payload) {
     return { success: false, message: "No payload provided" };
   }
@@ -78,12 +119,12 @@ async function validatePayloadValues(payload): Promise<Result<undefined>> {
 async function verifyAppleToken(token: string): Promise<Result<any>> {
   try {
     const decoded = jwt.decode(token, { complete: true });
-    const isValidPayload = await validatePayloadValues(decoded?.payload);
+    const isValidPayload = await validateApplePayloadValues(decoded?.payload);
     if (isValidPayload.success == false) {
       console.log(isValidPayload.message);
       return { success: false, message: "Failed to validate payload" };
     }
-    const signingKey = await getSigningKey(decoded.header.kid);
+    const signingKey = await getAppleSigningKey(decoded.header.kid);
     if (signingKey.success == false) {
       console.log(signingKey.message);
       return { success: false, message: "Failed to get signing key" };
@@ -98,13 +139,103 @@ async function verifyAppleToken(token: string): Promise<Result<any>> {
   }
 }
 
+/// Methods for veryfing my token values ///
+
+// NOTE: This doesn't use an aud value because that is basiclaly filled by issuer here.
+// My server is issuing and receiving the token so it serves no value for the time being
+async function validateMyPayloadValues(
+  payload: TokenPayload,
+  expectedType: string,
+): Promise<Result<undefined>> {
+  if (!payload) {
+    return { success: false, message: "No payload provided" };
+  }
+  if (payload.iss !== MY_ISSUER) {
+    return { success: false, message: `${payload.iss}  ~= ${MY_ISSUER}` };
+  }
+  // No aud value for now
+  if (payload.orig != "apple") {
+    return { success: false, message: `${payload.orig} ~= "apple"` };
+  }
+  if (payload.type != expectedType) {
+    return {
+      success: false,
+      message: `Didn't provide an ${expectedType} token`,
+    };
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (payload.exp <= now) {
+    return { success: false, message: `${payload.exp} (exp) < ${now} (now)` };
+  }
+  // All validations pass, let it through
+  return { success: true, value: undefined };
+}
+
+async function verifyMyToken(
+  token: string,
+  key: string,
+  type: string,
+): Promise<Result<any>> {
+  try {
+    const decoded = jwt.decode(token, { complete: true });
+    const isValidPayload = await validateMyPayloadValues(
+      decoded?.payload,
+      type,
+    );
+    if (isValidPayload.success == false) {
+      console.log(isValidPayload.message);
+      return { success: false, message: "Failed to validate payload" };
+    }
+    await jwt.verify(token, key, {
+      algorithms: ["HS256"],
+    });
+    return { success: true, value: decoded };
+  } catch (err) {
+    console.log(err);
+    return { success: false, message: "Error thrown during verification" };
+  }
+}
+
+// Auth middleware code
+
+const MY_AUTHENTICATION = createMiddleware<{
+  Variables: { decodedToken: string; decodedTokenPayload: TokenPayload };
+}>(
+  bearerAuth({
+    verifyToken: async (token, c) => {
+      const result = await verifyMyToken(
+        token,
+        // TODO: Consider tieing the token type with the secret value so that it isn't hardcoded here
+        Resource.AuthTokenSecret.value,
+        "access",
+      );
+      if (result.success == false) {
+        console.log(result.message);
+        return false;
+      }
+      c.set("decodedToken", result.value);
+      c.set("decodedTokenPayload", result.value.payload);
+      return true;
+    },
+  }),
+);
+
+const MY_AUTHENTICATION_VALIDATOR = zv(
+  "header",
+  z.object({
+    Authorization: z.string().startsWith("Bearer "),
+  }),
+);
+
+// Creating tokens code
+
 type TokenPayload = {
   iss: Issuer;
   sub: string;
   orig: AuthProviders;
   iat: number;
   exp: number;
-  type: "access";
+  type: "access" | "refresh";
 };
 
 type PreSignaturePayload = Omit<TokenPayload, "exp">;
@@ -124,11 +255,19 @@ async function createTokens(
     };
     const accessToken = jwt.sign(tokenPayload, Resource.AuthTokenSecret.value, {
       expiresIn: "15m",
+      algorithm: "HS256",
     });
+    const refreshTokenPayload: PreSignaturePayload = {
+      iss: MY_ISSUER,
+      sub: userId,
+      orig: authProvider,
+      iat: now,
+      type: "refresh",
+    };
     const refreshToken = jwt.sign(
-      tokenPayload,
+      refreshTokenPayload,
       Resource.RefreshTokenSecret.value,
-      { expiresIn: "7d" },
+      { expiresIn: "7d", algorithm: "HS256" },
     );
     return { success: true, value: { accessToken, refreshToken } };
   } catch (e) {
@@ -138,6 +277,77 @@ async function createTokens(
       success: false,
       message: "Failed to sign either access or refresh token",
     };
+  }
+}
+
+function hashRefreshToken(refreshToken: string): string {
+  return crypto.createHash("sha256").update(refreshToken).digest("hex");
+}
+
+// TODO: Use Zod to validate the data fetched from DDB
+async function getRefreshTokens(
+  ddb: DynamoDBClient,
+  primaryKey: string,
+): Promise<Result<any>> {
+  try {
+    // Try to get the existing record with the list of tokens
+    const getParams = {
+      TableName: Resource.UserTable.name,
+      Key: {
+        pk: { S: primaryKey },
+        sk: { S: REFRESH_TOKEN_PREFIX_SK },
+      },
+    };
+
+    const getCommand = new GetItemCommand(getParams);
+    const ddbResult = await ddb.send(getCommand);
+    if (ddbResult.Item) {
+      return successful(unmarshall(ddbResult.Item));
+    }
+    return successful(undefined);
+  } catch (e) {
+    console.log(e);
+    return unsuccessful("Failed to successfully query DDB");
+  }
+}
+
+interface Token {
+  hash: string;
+  createdAt: number;
+  used: boolean;
+}
+
+async function updateRefreshTokens(
+  ddb: DynamoDBClient,
+  primaryKey: string,
+  now: number,
+  tokenList: Token[],
+): Promise<Result<undefined>> {
+  try {
+    const putParams = {
+      TableName: Resource.UserTable.name,
+      Item: {
+        pk: { S: primaryKey },
+        sk: { S: REFRESH_TOKEN_PREFIX_SK },
+        tokenList: {
+          L: tokenList.map((token: any) => ({
+            M: {
+              hash: { S: token.hash },
+              createdAt: { N: token.createdAt.toString() },
+              used: { BOOL: !!token.used },
+            },
+          })),
+        },
+        updatedAt: { N: now.toString() },
+      },
+    };
+
+    await ddb.send(new PutItemCommand(putParams));
+
+    return successful(undefined);
+  } catch (e) {
+    console.log(e);
+    return unsuccessful("Failed to update refresh tokens");
   }
 }
 
@@ -152,35 +362,26 @@ async function saveRefreshToken(
     const primaryKey = `${userId}#${provider}`;
 
     // Hash the token before storing it
-    const tokenHash = crypto
-      .createHash("sha256")
-      .update(refreshToken)
-      .digest("hex");
+    const tokenHash = hashRefreshToken(refreshToken);
 
     // Create token info object with hash and timestamp
-    const newTokenInfo = {
+    const newTokenInfo: Token = {
       hash: tokenHash,
       createdAt: now,
       used: false,
     };
 
-    // Try to get the existing record with the list of tokens
-    const getParams = {
-      TableName: Resource.UserTable.name,
-      Key: {
-        pk: { S: primaryKey },
-        sk: { S: REFRESH_TOKEN_PREFIX_SK },
-      },
-    };
+    let tokenList: Token[] = [];
 
-    const getCommand = new GetItemCommand(getParams);
-    const getResult = await ddb.send(getCommand);
-
-    let tokenList = [];
+    const getResult = await getRefreshTokens(ddb, primaryKey);
+    if (getResult.success == false) {
+      console.log(getResult.message);
+      return unsuccessful("Failed to call DDB to get refreshTokens");
+    }
 
     // If record exists, get the existing token list
-    if (getResult.Item) {
-      const item = unmarshall(getResult.Item);
+    if (getResult.value) {
+      const item = getResult.value;
       console.log("Found existing token record:", item);
 
       if (item.tokenList && Array.isArray(item.tokenList)) {
@@ -204,33 +405,86 @@ async function saveRefreshToken(
     console.log(`Saving updated token list with ${tokenList.length} tokens`);
 
     // Write the updated token list to DynamoDB
-    const putParams = {
-      TableName: Resource.UserTable.name,
-      Item: {
-        pk: { S: primaryKey },
-        sk: { S: REFRESH_TOKEN_PREFIX_SK },
-        tokenList: {
-          L: tokenList.map((token) => ({
-            M: {
-              hash: { S: token.hash },
-              createdAt: { N: token.createdAt.toString() },
-              used: { BOOL: !!token.used },
-            },
-          })),
-        },
-        updatedAt: { N: now.toString() },
-      },
-    };
+    const putResult = await updateRefreshTokens(
+      ddb,
+      primaryKey,
+      now,
+      tokenList,
+    );
+    if (putResult.success == false) {
+      console.log(putResult.message);
+      unsuccessful("Failed to update refresh tokens");
+    }
 
-    await ddb.send(new PutItemCommand(putParams));
     console.log(
       `Successfully saved refresh token list with ${tokenList.length} tokens`,
     );
-
-    return { success: true, value: undefined };
+    return successful(undefined);
   } catch (error) {
     console.error("Error saving refresh token:", error);
-    return { success: false, message: "Failed to save refresh tokens list" };
+    return unsuccessful("Failed to save refresh tokens list");
+  }
+}
+
+async function refreshToken(
+  ddb: DynamoDBClient,
+  userId: string,
+  authProvider: AuthProviders,
+  toValidateRefreshToken: string,
+  newRefreshToken: string,
+): Promise<Result<undefined>> {
+  try {
+    const primaryKey = `${userId}#${authProvider}`;
+    const getResult = await getRefreshTokens(ddb, primaryKey);
+    if (getResult.success == false) {
+      console.log(getResult.message);
+      return unsuccessful("Unable to retrieve refresh tokens");
+    }
+    const tokenList = getResult.value?.tokenList;
+    if (!tokenList || tokenList.length == 0) {
+      console.log("Zero refresh tokens found");
+      return unsuccessful("No refresh tokens exist");
+    }
+
+    const toValidateRefreshTokenHash = hashRefreshToken(toValidateRefreshToken);
+    let mostRecentEntry = tokenList[0];
+    if (
+      mostRecentEntry.used ||
+      mostRecentEntry.hash != toValidateRefreshTokenHash
+    ) {
+      console.log(
+        `Used: ${mostRecentEntry.used}, mostRecent != current, ${mostRecentEntry.hash != toValidateRefreshTokenHash}`,
+      );
+      return unsuccessful("Couldn't match the hash");
+    }
+
+    // Update the entry and then return success cause we matched the hash
+    // Update the entry in two ways
+    // 1. set the most recent entry as used
+    // 2. Create a new most recent entry with the next refresh token
+    mostRecentEntry.used = true;
+    const now = Math.floor(new Date().getTime() / 1000);
+    const newTokenInfo: Token = {
+      hash: hashRefreshToken(newRefreshToken),
+      createdAt: now,
+      used: false,
+    };
+    tokenList.unshift(newTokenInfo);
+
+    const updateResult = await updateRefreshTokens(
+      ddb,
+      primaryKey,
+      now,
+      tokenList,
+    );
+    if (updateResult.success == false) {
+      console.log(updateResult.message);
+      return unsuccessful("Failed to update tokens after matching");
+    }
+    return successful(undefined);
+  } catch (e) {
+    console.log(e);
+    return unsuccessful("Failed attempt to refresh tokens");
   }
 }
 
@@ -248,7 +502,7 @@ async function createUser(
     Item: {
       pk: { S: primaryKey },
       sk: { S: ACCOUNT_SK },
-      email: { S: email },
+      email: { S: email || "" },
       createdAt: { N: now.toString() },
     },
     ConditionExpression: "attribute_not_exists(pk)",
@@ -274,6 +528,7 @@ const dynamoClient = new DynamoDBClient({});
 type MyEnv = {
   Variables: {
     ddb: DynamoDBClient;
+    decodedToken: string;
   };
 };
 
@@ -282,9 +537,11 @@ const app = new Hono<MyEnv>()
     c.set("ddb", dynamoClient);
     await next();
   })
+  // Authentication for /api routes
+  // Note: I'd like to only put MY_AUTHENTICATION_VALIDATOR once but then the RPC client doesn't pick up the header as necessary
+  .use("/api/*", MY_AUTHENTICATION)
   // Add a custom onError handler for the entire app
   .onError((err, c) => {
-    console.log(err);
     const status = err.status || 500;
 
     // Check if it's an auth error based on status code
@@ -292,28 +549,28 @@ const app = new Hono<MyEnv>()
       return c.json({ error: "Authentication failed", status: 401 }, 401);
     }
 
-    // Handle validation errors from zValidator
-    if (err instanceof z.ZodError) {
-      const errorDetails = err.errors.map((e) => ({
-        path: e.path.join("."),
-        message: e.message,
-      }));
+    if (err instanceof ValidationError) {
       return c.json(
-        {
-          error: "Validation error",
-          details: errorDetails,
-          status: 400,
-        },
+        { error: "Validation failed", details: err.getDetails(), status: 400 },
         400,
       );
     }
 
-    // Handle other errors
+    if (status < 500) {
+      return c.json(
+        { error: "Exception occurred", message: err.message, status },
+        status,
+      );
+    }
+
+    // Handle other errors as internal failures
+    console.log("Internal Failure occurred loggging the error ...");
+    console.log(err);
     return c.json({ error: "Internal server error", status: 500 }, 500);
   })
   .post(
     "/login",
-    zValidator(
+    zv(
       "header",
       z.object({
         apple_token: z.string(),
@@ -325,13 +582,13 @@ const app = new Hono<MyEnv>()
       const verifyTokenResult = await verifyAppleToken(headers.apple_token);
       if (verifyTokenResult.success == false) {
         console.log(verifyTokenResult.message);
-        return c.json({ success: false, message: "Failed to authenticate" });
+        return c.json(unsuccessful("Failed to authenticate"), 401);
       }
 
       if (!verifyTokenResult.value?.payload?.sub) {
         console.log("No payload or sub was provided");
         console.log(verifyTokenResult.value);
-        return c.json({ success: false, message: "Failed to authenticate" });
+        return c.json(unsuccessful("Failed to authenticate"), 401);
       }
 
       const payload = verifyTokenResult.value.payload;
@@ -345,13 +602,13 @@ const app = new Hono<MyEnv>()
       );
       if (createUserResult.success == false) {
         console.log(createUserResult.message);
-        return c.json({ success: false, message: "Failed to authenticate" });
+        return c.json(unsuccessful("Failed to authenticate"), 401);
       }
 
       const createTokensResult = await createTokens(userId, "apple");
       if (createTokensResult.success == false) {
         console.log(createTokensResult.message);
-        return c.json({ success: false, message: "Failed to authenticate" });
+        return c.json(unsuccessful("Failed to authenticate"), 401);
       }
 
       const saveRefreshTokenResult = await saveRefreshToken(
@@ -367,13 +624,69 @@ const app = new Hono<MyEnv>()
         );
       }
 
-      return c.json({
-        success: true,
-        accessToken: createTokensResult.value.accessToken,
-        refreshToken: createTokensResult.value.refreshToken,
-      });
+      return c.json(
+        successful({
+          accessToken: createTokensResult.value.accessToken,
+          refreshToken: createTokensResult.value.refreshToken,
+        }),
+      );
     },
-  );
+  )
+  .post(
+    "/refresh",
+    zv(
+      "header",
+      z.object({
+        refresh_token: z.string(),
+      }),
+    ),
+    async (c) => {
+      const headers = c.req.valid("header");
+      const verifyTokenResult = await verifyMyToken(
+        headers.refresh_token,
+        Resource.RefreshTokenSecret.value,
+        "refresh",
+      );
+      if (verifyTokenResult.success == false) {
+        console.log(verifyTokenResult.message);
+        return c.json(unsuccessful("Failed to refresh token"));
+      }
+      const payload: TokenPayload = verifyTokenResult.value.payload;
+
+      // Create them first to save an update to DDB
+      // Is that bad?
+      const createTokensResult = await createTokens(payload.sub, "apple");
+      if (createTokensResult.success == false) {
+        console.log(createTokensResult.message);
+        return c.json(unsuccessful("Failed to refresh"), 401);
+      }
+
+      const validateRefreshTokenResult = await refreshToken(
+        c.get("ddb"),
+        payload.sub,
+        payload.orig,
+        headers.refresh_token,
+        createTokensResult.value.refreshToken,
+      );
+      if (validateRefreshTokenResult.success == false) {
+        console.log(validateRefreshTokenResult.message);
+        return c.json(unsuccessful("Failed to refresh"), 401);
+      }
+      return c.json(
+        successful({
+          accessToken: createTokensResult.value.accessToken,
+          refreshToken: createTokensResult.value.refreshToken,
+        }),
+      );
+    },
+  )
+  .post("/api/test", MY_AUTHENTICATION_VALIDATOR, async (c) => {
+    const test = c.get("decodedToken");
+    console.log(test);
+    const payload = c.get("decodedTokenPayload");
+    console.log(payload);
+    return c.json({ message: "This is a temporary endpoint" });
+  });
 
 export type AppType = typeof app;
 export const handler = handle(app);

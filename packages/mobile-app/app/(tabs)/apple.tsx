@@ -10,7 +10,7 @@ const client = hc<AppType>(
   "https://zsqsgmp3bajrmuq6tmqm5frzfy0btrtq.lambda-url.us-west-1.on.aws",
 );
 
-// TODO TODO TODO: Need to use SecureStorage instead of AsyncStorage
+// TODO : Need to use SecureStorage instead of AsyncStorage
 
 async function makeJunkLoginCall() {
   const result = await client.login.$post({
@@ -18,11 +18,24 @@ async function makeJunkLoginCall() {
       apple_token: "token",
     },
   });
+  const json = await result.json();
+  if (json.success == true) {
+  }
+  console.log(await result.json());
+}
+
+async function makeTestCall(credential: string) {
+  const result = await client.api.test.$post({
+    header: {
+      Authorization: `Bearer ${credential}`,
+    },
+  });
   console.log(await result.json());
 }
 
 export default function App() {
   const [credential, setCredential] = useState(null);
+  const [refreshCredential, setRefreshCredential] = useState(null);
   const [loading, setLoading] = useState(true);
 
   async function clearStorage() {
@@ -30,12 +43,15 @@ export default function App() {
     setCredential(null);
   }
 
-  // Load credential from AsyncStorage on component mount
+  // Load credentials from AsyncStorage on component mount
   useEffect(() => {
     async function loadCredential() {
       try {
         const storedCredential = await AsyncStorage.getItem("credential");
         setCredential(storedCredential);
+        const storedRefreshCredential =
+          await AsyncStorage.getItem("refreshToken");
+        setRefreshCredential(storedRefreshCredential);
       } catch (error) {
         console.error("Failed to load credential:", error);
       } finally {
@@ -46,27 +62,56 @@ export default function App() {
     loadCredential();
   }, []);
 
+  const refreshAppleCredentials = async () => {
+    if (!refreshCredential) {
+      console.log("FAILURE");
+      return;
+    }
+    console.log("Refresh token: " + refreshCredential);
+    try {
+      const result = await client.refresh.$post({
+        header: {
+          refresh_token: refreshCredential,
+        },
+      });
+      const json = await result.json();
+      if (json.success == false) {
+        console.log("FAILURE");
+        console.log(json);
+        return;
+      }
+      AsyncStorage.setItem("credential", json.value.accessToken);
+      setCredential(json.value.accessToken);
+      AsyncStorage.setItem("refreshToken", json.value.refreshToken);
+      setRefreshCredential(json.value.refreshToken);
+    } catch (e) {
+      console.log("FAILURE");
+      console.log(e);
+    }
+  };
+
   const fetchAppleCredentials = async (
     credentialPromise: Promise<AppleAuthentication.AppleAuthenticationCredential>,
   ) => {
     try {
       const appleCredential = await credentialPromise;
-      console.log(appleCredential);
-      if (appleCredential.user) {
-        await AsyncStorage.setItem("user", appleCredential.user);
-      }
-      // delete this if block its useless
       if (appleCredential.identityToken) {
-        // Store credential token
-        await AsyncStorage.setItem("credential", appleCredential.identityToken);
-        // Update state
-        setCredential(appleCredential.identityToken);
         const result = await client.login.$post({
           header: {
             apple_token: appleCredential.identityToken,
           },
         });
-        console.log(await result.json());
+        let json = await result.json();
+        if (json.success == false) {
+          console.log("FAILED");
+          console.log(json);
+          return;
+        }
+        const payload = json.value;
+        AsyncStorage.setItem("credential", payload.accessToken);
+        AsyncStorage.setItem("refreshToken", payload.refreshToken);
+        setCredential(payload.accessToken);
+        setRefreshCredential(payload.refreshToken);
       }
     } catch (e) {
       if (e.code === "ERR_REQUEST_CANCELED") {
@@ -132,17 +177,22 @@ export default function App() {
         <View>
           <Button
             title="Does nothing lolz"
-            onPress={() => console.log("lolz")}
+            onPress={() => console.log(credential)}
+          />
+          <Button
+            title="Make test call"
+            onPress={() => makeTestCall(credential)}
           />
           <Button
             title="Make Junk Login Call"
             onPress={() => makeJunkLoginCall()}
           />
           <Button
-            title="Refresh api key"
-            onPress={() => handleAppleRefresh()}
+            title="Refresh tokens"
+            onPress={() => refreshAppleCredentials()}
           />
-          <Button title="Clear api key" onPress={() => clearStorage()} />
+          <Button title="Sign in again" onPress={() => handleAppleRefresh()} />
+          <Button title="Clear credentials" onPress={() => clearStorage()} />
         </View>
       ) : (
         <AppleAuthentication.AppleAuthenticationButton

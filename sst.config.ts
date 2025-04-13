@@ -32,8 +32,8 @@ async function mobileApi() {
     transform: {
       table: {
         billingMode: "PROVISIONED",
-        readCapacity: 20,
-        writeCapacity: 20,
+        readCapacity: 15,
+        writeCapacity: 15,
       },
     },
   });
