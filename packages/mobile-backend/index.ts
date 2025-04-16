@@ -223,6 +223,8 @@ const MY_AUTHENTICATION = createMiddleware<{
 const MY_AUTHENTICATION_VALIDATOR = zv(
   "header",
   z.object({
+    // TODO: The "Bearer " bit might not be necessary cause the built in auth validator
+    // fails before then anyways
     Authorization: z.string().startsWith("Bearer "),
   }),
 );
@@ -440,7 +442,7 @@ async function refreshToken(
       console.log(getResult.message);
       return unsuccessful("Unable to retrieve refresh tokens");
     }
-    const tokenList = getResult.value?.tokenList;
+    let tokenList = getResult.value?.tokenList;
     if (!tokenList || tokenList.length == 0) {
       console.log("Zero refresh tokens found");
       return unsuccessful("No refresh tokens exist");
@@ -470,6 +472,9 @@ async function refreshToken(
       used: false,
     };
     tokenList.unshift(newTokenInfo);
+    if (tokenList.length > 5) {
+      tokenList = tokenList.slice(0, 5);
+    }
 
     const updateResult = await updateRefreshTokens(
       ddb,

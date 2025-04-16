@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import { View, StyleSheet, Text, Button } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppType } from "../../../mobile-backend";
+import { ClientRequest, ClientResponse, InferResponseType } from "hono/client";
+import { ContentfulStatusCode } from "hono/utils/http-status";
 // I don't know why the require is necessary here but it works for now :shrug:
 const { hc } = require("hono/dist/client") as typeof import("hono/client");
 
@@ -11,6 +13,60 @@ const client = hc<AppType>(
 );
 
 // TODO : Need to use SecureStorage instead of AsyncStorage
+
+// Makes request to refresh credentials if necessary
+interface BearerToken {
+  header: {
+    Authorization: string;
+  };
+}
+interface ResponseAndNewCreds<T> {
+  response: T | InferResponseType<typeof client.refresh.$post>;
+  creds:
+    | {
+        accessToken: string;
+        refreshToken: string;
+      }
+    | undefined;
+}
+async function makeCall<I extends BearerToken, O>(
+  call: ClientRequest<{
+    $post: {
+      input: I;
+      output: O;
+      outputFormat: "json";
+      status: ContentfulStatusCode;
+    };
+  }>,
+  input: I,
+  refreshToken: string | null,
+): Promise<ResponseAndNewCreds<O>> {
+  const result = await call.$post(input);
+  const resultJson = await result.json();
+  // First call either succeeded or was a non access denied error
+  if (result.ok || (!result.ok && result.status != 401)) {
+    return { response: resultJson, creds: undefined };
+  }
+  if (!refreshToken) {
+    return { response: resultJson, creds: undefined };
+  }
+  // First call was an access denied and we have a refresh token. Attempt to refresh tokens
+  const refreshCreds = await client.refresh.$post({
+    header: {
+      refresh_token: refreshToken,
+    },
+  });
+  const refreshJson = await refreshCreds.json();
+  if (refreshJson.success == false) {
+    console.log(refreshJson.message);
+    return { response: refreshJson, creds: undefined };
+  }
+  const tokens = refreshJson.value;
+  input.header.Authorization = `Bearer ${tokens.accessToken}`;
+  const newCredsResult = await call.$post(input);
+  const newCredsResultJson = await newCredsResult.json();
+  return { response: newCredsResultJson, creds: tokens };
+}
 
 async function makeJunkLoginCall() {
   const result = await client.login.$post({
@@ -24,13 +80,21 @@ async function makeJunkLoginCall() {
   console.log(await result.json());
 }
 
-async function makeTestCall(credential: string) {
-  const result = await client.api.test.$post({
-    header: {
-      Authorization: `Bearer ${credential}`,
+async function makeTestCall(
+  credential: string,
+  refreshCredential: string | null,
+) {
+  const result = await makeCall(
+    client.api.test,
+    {
+      header: {
+        Authorization: `Bearer ${credential}`,
+      },
     },
-  });
-  console.log(await result.json());
+    refreshCredential,
+  );
+  console.log(result);
+  return result.creds;
 }
 
 export default function App() {
@@ -181,7 +245,15 @@ export default function App() {
           />
           <Button
             title="Make test call"
-            onPress={() => makeTestCall(credential)}
+            onPress={async () => {
+              const creds = await makeTestCall(credential, refreshCredential);
+              if (creds) {
+                AsyncStorage.setItem("credential", creds.accessToken);
+                setCredential(creds.accessToken);
+                AsyncStorage.setItem("refreshToken", creds.refreshToken);
+                setRefreshCredential(creds.refreshToken);
+              }
+            }}
           />
           <Button
             title="Make Junk Login Call"
