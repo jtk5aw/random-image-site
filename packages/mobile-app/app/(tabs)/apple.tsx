@@ -2,6 +2,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { useState, useEffect } from "react";
 import { View, StyleSheet, Text, Button } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import { AppType } from "../../../mobile-backend";
 import { ClientRequest, ClientResponse, InferResponseType } from "hono/client";
 import { ContentfulStatusCode } from "hono/utils/http-status";
@@ -11,6 +12,9 @@ const { hc } = require("hono/dist/client") as typeof import("hono/client");
 const client = hc<AppType>(
   "https://zsqsgmp3bajrmuq6tmqm5frzfy0btrtq.lambda-url.us-west-1.on.aws",
 );
+
+const ACCESS_TOKEN_SECURE_STORE_KEY = "accessToken";
+const REFRESH_TOKEN_SECURE_STORE_KEY = "refreshToken";
 
 // TODO : Need to use SecureStorage instead of AsyncStorage
 
@@ -101,20 +105,26 @@ export default function App() {
   const [credential, setCredential] = useState(null);
   const [refreshCredential, setRefreshCredential] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loginInProgress, setLoginInProgress] = useState(false);
 
   async function clearStorage() {
-    await AsyncStorage.clear();
+    await SecureStore.deleteItemAsync(ACCESS_TOKEN_SECURE_STORE_KEY);
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_SECURE_STORE_KEY);
     setCredential(null);
+    setRefreshCredential(null);
   }
 
-  // Load credentials from AsyncStorage on component mount
+  // Load credentials from SecureStore on component mount
   useEffect(() => {
     async function loadCredential() {
       try {
-        const storedCredential = await AsyncStorage.getItem("credential");
+        const storedCredential = await SecureStore.getItemAsync(
+          ACCESS_TOKEN_SECURE_STORE_KEY,
+        );
         setCredential(storedCredential);
-        const storedRefreshCredential =
-          await AsyncStorage.getItem("refreshToken");
+        const storedRefreshCredential = await SecureStore.getItemAsync(
+          REFRESH_TOKEN_SECURE_STORE_KEY,
+        );
         setRefreshCredential(storedRefreshCredential);
       } catch (error) {
         console.error("Failed to load credential:", error);
@@ -144,9 +154,15 @@ export default function App() {
         console.log(json);
         return;
       }
-      AsyncStorage.setItem("credential", json.value.accessToken);
+      SecureStore.setItemAsync(
+        ACCESS_TOKEN_SECURE_STORE_KEY,
+        json.value.accessToken,
+      );
       setCredential(json.value.accessToken);
-      AsyncStorage.setItem("refreshToken", json.value.refreshToken);
+      SecureStore.setItemAsync(
+        REFRESH_TOKEN_SECURE_STORE_KEY,
+        json.value.refreshToken,
+      );
       setRefreshCredential(json.value.refreshToken);
     } catch (e) {
       console.log("FAILURE");
@@ -160,24 +176,40 @@ export default function App() {
     try {
       const appleCredential = await credentialPromise;
       if (appleCredential.identityToken) {
+        // Set login in progress to show blank screen while login API call is in progress
+        setLoginInProgress(true);
+
         const result = await client.login.$post({
           header: {
             apple_token: appleCredential.identityToken,
           },
         });
         let json = await result.json();
+
+        // Login process complete, revert to normal screen
+        setLoginInProgress(false);
+
         if (json.success == false) {
           console.log("FAILED");
           console.log(json);
           return;
         }
         const payload = json.value;
-        AsyncStorage.setItem("credential", payload.accessToken);
-        AsyncStorage.setItem("refreshToken", payload.refreshToken);
+        SecureStore.setItemAsync(
+          ACCESS_TOKEN_SECURE_STORE_KEY,
+          payload.accessToken,
+        );
+        SecureStore.setItemAsync(
+          REFRESH_TOKEN_SECURE_STORE_KEY,
+          payload.refreshToken,
+        );
         setCredential(payload.accessToken);
         setRefreshCredential(payload.refreshToken);
       }
     } catch (e) {
+      // Reset login in progress in case of error
+      setLoginInProgress(false);
+
       if (e.code === "ERR_REQUEST_CANCELED") {
         // handle that the user canceled the sign-in flow
         console.log("Sign in canceled");
@@ -203,7 +235,7 @@ export default function App() {
     let user;
     try {
       console.log("fetching user");
-      user = await AsyncStorage.getItem("user");
+      user = await SecureStore.getItemAsync("user");
       if (!user) {
         console.log("didn't find user");
         throw new Error(
@@ -235,6 +267,11 @@ export default function App() {
     );
   }
 
+  // Show blank screen during login API call
+  if (loginInProgress) {
+    return <View style={styles.container} />;
+  }
+
   return (
     <View style={styles.container}>
       {credential ? (
@@ -248,9 +285,15 @@ export default function App() {
             onPress={async () => {
               const creds = await makeTestCall(credential, refreshCredential);
               if (creds) {
-                AsyncStorage.setItem("credential", creds.accessToken);
+                SecureStore.setItemAsync(
+                  ACCESS_TOKEN_SECURE_STORE_KEY,
+                  creds.accessToken,
+                );
                 setCredential(creds.accessToken);
-                AsyncStorage.setItem("refreshToken", creds.refreshToken);
+                SecureStore.setItemAsync(
+                  REFRESH_TOKEN_SECURE_STORE_KEY,
+                  creds.refreshToken,
+                );
                 setRefreshCredential(creds.refreshToken);
               }
             }}
