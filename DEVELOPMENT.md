@@ -10,6 +10,10 @@ Then set them with
 
 npx sst secret set <secret-name> < <local-secret-file-name>
 
+## Share extension
+
+Making the share extension required downloading xcode, opening the project in xcode, setting up signing capabilitites and then adding a target that is the share extension.
+
 ## TODO: Add instructions for other deployments and how to make changes.
 ## I previously had it in a local file cause it contained secret values 
 ## but I think I've since lost access to that
