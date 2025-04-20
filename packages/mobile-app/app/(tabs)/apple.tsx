@@ -1,7 +1,6 @@
 import * as AppleAuthentication from "expo-apple-authentication";
 import { useState, useEffect } from "react";
 import { View, StyleSheet, Text, Button } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import { AppType } from "../../../mobile-backend";
 import { ClientRequest, ClientResponse, InferResponseType } from "hono/client";
@@ -9,14 +8,16 @@ import { ContentfulStatusCode } from "hono/utils/http-status";
 // I don't know why the require is necessary here but it works for now :shrug:
 const { hc } = require("hono/dist/client") as typeof import("hono/client");
 
-const client = hc<AppType>(
-  "https://zsqsgmp3bajrmuq6tmqm5frzfy0btrtq.lambda-url.us-west-1.on.aws",
-);
+const client = hc<AppType>("https://jacksonkennedy.mobile.jtken.com");
+
+// TODO TODO TODO: So I've made the necessary changes to signing to make sharing
+// keychains work (I think, I'm like 90% sure). I've also learned (through t3chat) that
+// keychains just can't be shared with expo SecureStorage. It just makes that completely impossible
+// cause you can't set accessGroups. So I need to use something else, probably something like
+// react-native-keychain which seems lower level and to allow it. Start from there
 
 const ACCESS_TOKEN_SECURE_STORE_KEY = "accessToken";
 const REFRESH_TOKEN_SECURE_STORE_KEY = "refreshToken";
-
-// TODO : Need to use SecureStorage instead of AsyncStorage
 
 // Makes request to refresh credentials if necessary
 interface BearerToken {
@@ -157,6 +158,10 @@ export default function App() {
       SecureStore.setItemAsync(
         ACCESS_TOKEN_SECURE_STORE_KEY,
         json.value.accessToken,
+        {
+          // force it to use your shared group
+          accessGroup: "ABC13EF.com.myapp.app",
+        },
       );
       setCredential(json.value.accessToken);
       SecureStore.setItemAsync(

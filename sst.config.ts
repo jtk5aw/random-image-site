@@ -45,6 +45,15 @@ async function mobileApi() {
     url: true,
     link: [bucket, userTable, authTokenSecret, refreshTokenSecret],
   });
+
+  const backendDomain =
+    $app.stage === "production"
+      ? "mobile.jtken.com"
+      : `${$app.stage}.mobile.jtken.com`;
+  const router = new sst.aws.Router("BackendRouter", {
+    domain: backendDomain,
+  });
+  router.route("/", backendFunction.url);
 }
 
 async function discordBot(app: any) {
