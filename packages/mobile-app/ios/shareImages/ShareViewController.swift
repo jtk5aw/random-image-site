@@ -12,11 +12,17 @@ import UniformTypeIdentifiers
 import Security
 
 class ShareViewController: SLComposeServiceViewController {
-    
+   
+   // TODO TODO TODO: Got it working!!! woot woot. 
+   // Next steps are to set up refresh here (if creds are old when this call is made it just fails)
+   // and also clean up some of the logging (especially reading back the access token)
+
     private var imageView: UIImageView?
     private var sharedImage: UIImage?
     private var accessToken: String?
     private var refreshToken: String?
+    private let accessGroup = "7XNW9F5V9P.com.jtken.randomimagesite"
+    private var testKeyValue: String?
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -45,8 +51,8 @@ class ShareViewController: SLComposeServiceViewController {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.jtken.randomimagesite",
-            kSecAttrAccessGroup as String: "7XNW9F5V9P.com.jtken.randomimagesite",
+            kSecAttrService as String: key,
+            kSecAttrAccessGroup as String: accessGroup,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true
         ]
@@ -65,6 +71,48 @@ class ShareViewController: SLComposeServiceViewController {
         }
         
         return String(data: data, encoding: .utf8)
+    }
+    
+    func saveValueToKeychain(key: String, value: String) -> Bool {
+        print("This is a test of  mine at the start of save")
+        // Convert the string value to data
+        guard let valueData = value.data(using: .utf8) else {
+            print("Failed to convert value to data")
+            return false
+        }
+        
+        // Check if the key already exists
+        let existingQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecAttrService as String: key,
+            kSecAttrAccessGroup as String: accessGroup
+        ]
+        
+        // First try to delete any existing item
+        let deleteStatus = SecItemDelete(existingQuery as CFDictionary)
+        print("Delete status \(deleteStatus)")
+        
+        // Create the query to add the new item
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecAttrService as String: key,
+            kSecAttrAccessGroup as String: accessGroup,
+            kSecValueData as String: valueData,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
+        
+        // Add the item to the keychain
+        let status = SecItemAdd(query as CFDictionary, nil)
+        
+        guard status == errSecSuccess else {
+            print("Failed to save \(key) to keychain, status code: \(status)")
+            return false
+        }
+        
+        print("Successfully saved \(key) to keychain")
+        return true
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -92,10 +140,26 @@ class ShareViewController: SLComposeServiceViewController {
         loadingView.addSubview(activityIndicator)
         self.view.addSubview(loadingView)
         
-        // Display token information
+        // Write a test value to the keychain
+        let testKey = "shareExtensionTestKey"
+        let testValue = "Test value from share extension: \(Date())"
+        let saveSuccess = saveValueToKeychain(key: testKey, value: testValue)
+        
+        // Read the value back from the keychain
+        let retrievedValue = getValueFromKeychain(key: testKey)
+        
+        // Display token and keychain test information
+        let keychainTestInfo = """
+        Write to keychain: \(saveSuccess ? "Success" : "Failed")
+        Written value: \(testValue)
+        Retrieved value: \(retrievedValue ?? "Not found")
+        """
+        
         let tokenInfo = """
         Access Token: \(accessToken ?? "Not found")
         Refresh Token: \(refreshToken ?? "Not found")
+        
+        \(keychainTestInfo)
         """
         print(tokenInfo)
         
@@ -126,7 +190,7 @@ class ShareViewController: SLComposeServiceViewController {
                     isSuccess = (200...299).contains(httpResponse.statusCode)
                 }
                 
-                // Add token info to message
+                // Add token info and keychain test info to message
                 myMessage += "\n\n" + tokenInfo
                 
                 // Show result on the main thread
@@ -152,9 +216,9 @@ class ShareViewController: SLComposeServiceViewController {
             
             task.resume()
         } else {
-            // If URL is invalid, show tokens and complete the request
+            // If URL is invalid, show tokens and keychain test info and complete the request
             let alertController = UIAlertController(
-                title: "Token Information",
+                title: "Token and Keychain Information",
                 message: tokenInfo,
                 preferredStyle: .alert
             )

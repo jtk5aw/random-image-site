@@ -2,6 +2,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { useState, useEffect } from "react";
 import { View, StyleSheet, Text, Button } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as Keychain from "react-native-keychain";
 import { AppType } from "../../../mobile-backend";
 import { ClientRequest, ClientResponse, InferResponseType } from "hono/client";
 import { ContentfulStatusCode } from "hono/utils/http-status";
@@ -10,14 +11,10 @@ const { hc } = require("hono/dist/client") as typeof import("hono/client");
 
 const client = hc<AppType>("https://jacksonkennedy.mobile.jtken.com");
 
-// TODO TODO TODO: So I've made the necessary changes to signing to make sharing
-// keychains work (I think, I'm like 90% sure). I've also learned (through t3chat) that
-// keychains just can't be shared with expo SecureStorage. It just makes that completely impossible
-// cause you can't set accessGroups. So I need to use something else, probably something like
-// react-native-keychain which seems lower level and to allow it. Start from there
-
 const ACCESS_TOKEN_SECURE_STORE_KEY = "accessToken";
 const REFRESH_TOKEN_SECURE_STORE_KEY = "refreshToken";
+const CLIENT_ID = "com.jtken.randomimagesite";
+const SHARED_KEYCHAIN_GROUP = "7XNW9F5V9P.com.jtken.randomimagesite";
 
 // Makes request to refresh credentials if necessary
 interface BearerToken {
@@ -109,8 +106,9 @@ export default function App() {
   const [loginInProgress, setLoginInProgress] = useState(false);
 
   async function clearStorage() {
-    await SecureStore.deleteItemAsync(ACCESS_TOKEN_SECURE_STORE_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_SECURE_STORE_KEY);
+    await Keychain.resetGenericPassword({
+      service: CLIENT_ID,
+    });
     setCredential(null);
     setRefreshCredential(null);
   }
@@ -119,14 +117,28 @@ export default function App() {
   useEffect(() => {
     async function loadCredential() {
       try {
-        const storedCredential = await SecureStore.getItemAsync(
-          ACCESS_TOKEN_SECURE_STORE_KEY,
-        );
-        setCredential(storedCredential);
-        const storedRefreshCredential = await SecureStore.getItemAsync(
-          REFRESH_TOKEN_SECURE_STORE_KEY,
-        );
-        setRefreshCredential(storedRefreshCredential);
+        const accessTokenCredential = await Keychain.getGenericPassword({
+          service: ACCESS_TOKEN_SECURE_STORE_KEY,
+          accessGroup: SHARED_KEYCHAIN_GROUP,
+        });
+        if (
+          !accessTokenCredential ||
+          accessTokenCredential.username != ACCESS_TOKEN_SECURE_STORE_KEY
+        ) {
+          throw Error("Failed to retrieve access token");
+        }
+        setCredential(accessTokenCredential.password);
+        const refreshTokenCredential = await Keychain.getGenericPassword({
+          service: REFRESH_TOKEN_SECURE_STORE_KEY,
+          accessGroup: SHARED_KEYCHAIN_GROUP,
+        });
+        if (
+          !refreshTokenCredential ||
+          refreshTokenCredential.username != REFRESH_TOKEN_SECURE_STORE_KEY
+        ) {
+          throw Error("Failed to retrieve refresh token");
+        }
+        setRefreshCredential(refreshTokenCredential.password);
       } catch (error) {
         console.error("Failed to load credential:", error);
       } finally {
@@ -136,6 +148,27 @@ export default function App() {
 
     loadCredential();
   }, []);
+
+  const storeCreds = async (accessToken: string, refreshToken: string) => {
+    await Keychain.setGenericPassword(
+      ACCESS_TOKEN_SECURE_STORE_KEY,
+      accessToken,
+      {
+        service: ACCESS_TOKEN_SECURE_STORE_KEY,
+        accessGroup: SHARED_KEYCHAIN_GROUP,
+      },
+    );
+    setCredential(accessToken);
+    await Keychain.setGenericPassword(
+      REFRESH_TOKEN_SECURE_STORE_KEY,
+      refreshToken,
+      {
+        service: REFRESH_TOKEN_SECURE_STORE_KEY,
+        accessGroup: SHARED_KEYCHAIN_GROUP,
+      },
+    );
+    setRefreshCredential(refreshToken);
+  };
 
   const refreshAppleCredentials = async () => {
     if (!refreshCredential) {
@@ -155,20 +188,7 @@ export default function App() {
         console.log(json);
         return;
       }
-      SecureStore.setItemAsync(
-        ACCESS_TOKEN_SECURE_STORE_KEY,
-        json.value.accessToken,
-        {
-          // force it to use your shared group
-          accessGroup: "ABC13EF.com.myapp.app",
-        },
-      );
-      setCredential(json.value.accessToken);
-      SecureStore.setItemAsync(
-        REFRESH_TOKEN_SECURE_STORE_KEY,
-        json.value.refreshToken,
-      );
-      setRefreshCredential(json.value.refreshToken);
+      storeCreds(json.value.accessToken, json.value.refreshToken);
     } catch (e) {
       console.log("FAILURE");
       console.log(e);
@@ -200,16 +220,7 @@ export default function App() {
           return;
         }
         const payload = json.value;
-        SecureStore.setItemAsync(
-          ACCESS_TOKEN_SECURE_STORE_KEY,
-          payload.accessToken,
-        );
-        SecureStore.setItemAsync(
-          REFRESH_TOKEN_SECURE_STORE_KEY,
-          payload.refreshToken,
-        );
-        setCredential(payload.accessToken);
-        setRefreshCredential(payload.refreshToken);
+        storeCreds(payload.accessToken, payload.refreshToken);
       }
     } catch (e) {
       // Reset login in progress in case of error
@@ -240,6 +251,7 @@ export default function App() {
     let user;
     try {
       console.log("fetching user");
+      // Maybe move this to Keychain? I don't think I actually really use it though so maybe also just delete it?
       user = await SecureStore.getItemAsync("user");
       if (!user) {
         console.log("didn't find user");
@@ -290,16 +302,7 @@ export default function App() {
             onPress={async () => {
               const creds = await makeTestCall(credential, refreshCredential);
               if (creds) {
-                SecureStore.setItemAsync(
-                  ACCESS_TOKEN_SECURE_STORE_KEY,
-                  creds.accessToken,
-                );
-                setCredential(creds.accessToken);
-                SecureStore.setItemAsync(
-                  REFRESH_TOKEN_SECURE_STORE_KEY,
-                  creds.refreshToken,
-                );
-                setRefreshCredential(creds.refreshToken);
+                storeCreds(creds.accessToken, creds.refreshToken);
               }
             }}
           />

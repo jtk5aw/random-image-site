@@ -4,7 +4,7 @@
 <dict>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)7XNW9F5V9P.com.jtken.randomimagesite</string>
+		<string>$(AppIdentifierPrefix)com.jtken.randomimagesite</string>
 	</array>
 </dict>
 </plist>
