@@ -10,6 +10,13 @@ Then set them with
 
 npx sst secret set <secret-name> < <local-secret-file-name>
 
+## Mobile
+
+For some reasong sometimes you have to change the objectversion from 70 to 53 for stuff to compile
+
+:shrug: I have literally zero clue why and haven't been able to look into what the problem is.
+But sometimes it just gets autoupdated back to 70 and that just breaks stuff
+
 ## Share extension
 
 Making the share extension required downloading xcode, opening the project in xcode, setting up signing capabilitites and then adding a target that is the share extension.
