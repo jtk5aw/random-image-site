@@ -107,8 +107,14 @@ export default function App() {
 
   async function clearStorage() {
     await Keychain.resetGenericPassword({
-      service: CLIENT_ID,
+      service: ACCESS_TOKEN_SECURE_STORE_KEY,
+      accessGroup: SHARED_KEYCHAIN_GROUP,
     });
+    await Keychain.resetGenericPassword({
+      service: REFRESH_TOKEN_SECURE_STORE_KEY,
+      accessGroup: SHARED_KEYCHAIN_GROUP,
+    });
+
     setCredential(null);
     setRefreshCredential(null);
   }
