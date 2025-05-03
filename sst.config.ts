@@ -39,6 +39,15 @@ async function mobileApi() {
   });
 
   const bucket = new sst.aws.Bucket("InitialUploadBucket");
+  sst.Linkable.wrap(sst.aws.Bucket, (bucket) => ({
+    properties: { name: bucket.name },
+    include: [
+      sst.aws.permission({
+        actions: ["s3:PutObject"],
+        resources: [bucket.arn, $interpolate`${bucket.arn}/*`],
+      }),
+    ],
+  }));
 
   const backendFunction = new sst.aws.Function("BackendFunction", {
     handler: "packages/mobile-backend/index.handler",

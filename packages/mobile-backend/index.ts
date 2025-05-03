@@ -9,9 +9,13 @@ import {
   DynamoDBClient,
   PutItemCommand,
   GetItemCommand,
+  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import { Resource } from "sst";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { v4 as uuidv4 } from "uuid";
 import { bearerAuth } from "hono/bearer-auth";
 import { createMiddleware } from "hono/factory";
 
@@ -56,6 +60,7 @@ const MY_ISSUER = "randomimagesite";
 // Dynamo constants
 const ACCOUNT_SK = "account_sk";
 const REFRESH_TOKEN_PREFIX_SK = "refresh_token_sk";
+const UPLOAD_RATE_LIMIT_SK = "upload_rate_limit_sk";
 
 type Result<T> =
   | { success: true; value: T }
@@ -527,12 +532,91 @@ async function createUser(
   }
 }
 
+/**
+ * Gets the current hour in epoch seconds, rounded down to the hour
+ * Example: 1746299008 -> 1746298800 (seconds at the start of the hour)
+ *
+ * @returns Epoch timestamp rounded down to the nearest hour
+ */
+function getCurrentHourKey(): number {
+  const now = Math.floor(Date.now() / 1000); // Current time in seconds
+  const SECONDS_IN_HOUR = 3600;
+  return now - (now % SECONDS_IN_HOUR); // Round down to the nearest hour
+}
+
+/**
+ * Checks and updates the rate limit for user uploads using conditional update
+ * Allows 10 uploads per hour per user
+ *
+ * @param ddb DynamoDB client
+ * @param userId User ID
+ * @param provider Auth provider
+ * @returns Result indicating if the rate limit has been exceeded and remaining uploads
+ */
+async function checkAndUpdateUploadRateLimit(
+  ddb: DynamoDBClient,
+  userId: string,
+  provider: AuthProviders,
+): Promise<Result<{ canUpload: boolean; remainingUploads: number }>> {
+  try {
+    const primaryKey = `${userId}#${provider}`;
+    const hourKey = getCurrentHourKey();
+    const sortKey = `${UPLOAD_RATE_LIMIT_SK}#${hourKey}`;
+    const HOURLY_LIMIT = 10;
+
+    // Use UpdateItem with a conditional expression to atomically increment the counter
+    // if it's less than the limit
+    const updateParams = {
+      TableName: Resource.UserTable.name,
+      Key: {
+        pk: { S: primaryKey },
+        sk: { S: sortKey },
+      },
+      UpdateExpression:
+        "SET uploadCount = if_not_exists(uploadCount, :zero) + :inc, updatedAt = :now",
+      ConditionExpression:
+        "attribute_not_exists(uploadCount) OR uploadCount < :limit",
+      ExpressionAttributeValues: {
+        ":zero": { N: "0" },
+        ":inc": { N: "1" },
+        ":limit": { N: HOURLY_LIMIT.toString() },
+        ":now": { N: Math.floor(Date.now() / 1000).toString() },
+      },
+      ReturnValues: "UPDATED_NEW",
+    };
+
+    try {
+      const result = await ddb.send(new UpdateItemCommand(updateParams));
+      const newCount = parseInt(result.Attributes?.uploadCount.N || "1");
+
+      return successful({
+        canUpload: true,
+        remainingUploads: HOURLY_LIMIT - newCount,
+      });
+    } catch (e) {
+      if (e instanceof ConditionalCheckFailedException) {
+        // Condition failed means we've hit the rate limit
+        return successful({
+          canUpload: false,
+          remainingUploads: 0,
+        });
+      }
+      return unsuccessful("Failed to update rate limit");
+    }
+  } catch (e) {
+    console.error("Error checking upload rate limit:", e);
+    return unsuccessful("Failed to check upload rate limit");
+  }
+}
+
 // Initialize AWS clients
 const dynamoClient = new DynamoDBClient({});
+const s3Client = new S3Client({});
 
 type MyEnv = {
   Variables: {
     ddb: DynamoDBClient;
+    s3: S3Client;
     decodedToken: string;
   };
 };
@@ -540,6 +624,7 @@ type MyEnv = {
 const app = new Hono<MyEnv>()
   .use(async (c, next) => {
     c.set("ddb", dynamoClient);
+    c.set("s3", s3Client);
     await next();
   })
   // Authentication for /api routes
@@ -691,7 +776,80 @@ const app = new Hono<MyEnv>()
     const payload = c.get("decodedTokenPayload");
     console.log(payload);
     return c.json({ message: "This is a temporary endpoint" });
-  });
+  })
+  .get(
+    "/api/upload/:group",
+    MY_AUTHENTICATION_VALIDATOR,
+    zv(
+      "param",
+      z.object({
+        group: z.string().min(1).max(100),
+      }),
+    ),
+    async (c) => {
+      const s3 = c.get("s3");
+      const ddb = c.get("ddb");
+      const payload = c.get("decodedTokenPayload");
+      const userId = payload.sub;
+      const provider = payload.orig;
+      const params = c.req.valid("param");
+
+      try {
+        // Check and update rate limit using the hourly counter approach
+        const rateLimitResult = await checkAndUpdateUploadRateLimit(
+          ddb,
+          userId,
+          provider,
+        );
+
+        if (rateLimitResult.success === false) {
+          console.log(`Rate limit check failed: ${rateLimitResult.message}`);
+          return c.json(unsuccessful("Failed to upload"), 500);
+        }
+
+        // If user has exceeded their upload limit
+        if (!rateLimitResult.value.canUpload) {
+          return c.json(
+            unsuccessful(
+              "Upload rate limit exceeded. You can upload a maximum of 10 images per hour.",
+            ),
+            429, // Too Many Requests
+          );
+        }
+
+        // Generate a unique file name using UUID
+        const fileId = uuidv4();
+        const key = fileId;
+
+        // Create the command for putting an object in S3
+        const putObjectCommand = new PutObjectCommand({
+          Bucket: Resource.InitialUploadBucket.name,
+          Key: key,
+          Metadata: {
+            userId: userId,
+            group: params.group,
+            provider: provider,
+            uploadTime: new Date().toISOString(),
+          },
+        });
+
+        // Generate a presigned URL that will be valid for 1 minute
+        const presignedUrl = await getSignedUrl(s3, putObjectCommand, {
+          expiresIn: 60, // 1 minute
+        });
+
+        return c.json(
+          successful({
+            presignedUrl,
+            remainingUploads: rateLimitResult.value.remainingUploads,
+          }),
+        );
+      } catch (e) {
+        console.log("Failed to generate presigned URL: " + e);
+        return c.json(unsuccessful("Failed to generate upload URL"), 500);
+      }
+    },
+  );
 
 export type AppType = typeof app;
 export const handler = handle(app);

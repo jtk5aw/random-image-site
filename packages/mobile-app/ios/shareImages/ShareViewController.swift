@@ -143,10 +143,10 @@ class ShareViewController: UIViewController {
         loadingView.addSubview(activityIndicator)
         self.view.addSubview(loadingView)
         
-        // Make a test network call to the backend
-        let testUrl = "https://jacksonkennedy.mobile.jtken.com/api/test"
-
-        guard let url = URL(string: testUrl), let accessToken = accessToken else {
+        // Get presigned URL from backend
+        let uploadUrl = "https://jacksonkennedy.mobile.jtken.com/api/upload/discord"
+        
+        guard let url = URL(string: uploadUrl), let accessToken = accessToken, let image = sharedImage else {
             let alertController = UIAlertController(
                 title: "Internal failure",
                 message: "There was an issue processing your request",
@@ -163,9 +163,9 @@ class ShareViewController: UIViewController {
         }
         
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = "GET"
          
-        // Make the network call with token refresh capability
+        // Make the network call with token refresh capability to get presigned URL
         makeNetworkCall(
             request: request,
             accessToken: accessToken,
@@ -186,7 +186,7 @@ class ShareViewController: UIViewController {
             // Show success or failure alert
             let alertController = UIAlertController(
                 title: isSuccess ? "Success!" : "Failure!",
-                message: isSuccess ? "Upload complete" : "Failed to upload",
+                message: isSuccess ? "Image uploaded successfully!" : "Failed to upload",
                 preferredStyle: .alert
             )
             
@@ -307,14 +307,102 @@ class ShareViewController: UIViewController {
                     return
                 }
                 
-                message = "\(isRetry ? "Retry r" : "R")esponse: \(String(data: data, encoding: .utf8) ?? "No data")"
-                print(message)
-                isSuccess = (200...299).contains(statusCode)
+                if (200...299).contains(statusCode) {
+                    // If successful, try to parse the response to get the presigned URL
+                    do {
+                        print(data)
+                        if let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                           let success = jsonObject["success"] as? Bool,
+                           success == true,
+                           let value = jsonObject["value"] as? [String: Any],
+                           let presignedUrl = value["presignedUrl"] as? String,
+                           let remainingUploads = value["remainingUploads"] as? Int {
+                            
+                            print("Got presigned URL: \(presignedUrl)")
+                            print("Remaining uploads: \(remainingUploads)")
+                            
+                            // Now upload the image to the presigned URL
+                            self.uploadImageToPresignedUrl(
+                                presignedUrl: presignedUrl, 
+                                remainingUploads: remainingUploads,
+                                loadingView: loadingView
+                            )
+                            return
+                        } else {
+                            if let raw = String(data: data, encoding: .utf8) {
+                                print("--- Raw response start ---\n\(raw)\n--- Raw response end ---")
+                            } else {
+                                print("⚠️ Couldn't convert data to UTF-8 string; might be wrong encoding.")
+                            }
+                            message = "Failed to parse response or missing presigned URL"
+                            print(message)
+                            isSuccess = false
+                        }
+                    } catch {
+                        message = "Failed to parse response: \(error.localizedDescription)"
+                        print(message)
+                        isSuccess = false
+                    }
+                } else {
+                    message = "\(isRetry ? "Retry r" : "R")esponse: \(String(data: data, encoding: .utf8) ?? "No data")"
+                    print(message)
+                    isSuccess = false
+                }
+                
                 self.completeWithResult(isSuccess: isSuccess, message: message, loadingView: loadingView)
             }
         }
         
         task.resume()
+    }
+    
+    // Method to upload the image to the presigned URL
+    private func uploadImageToPresignedUrl(presignedUrl: String, remainingUploads: Int, loadingView: UIView) {
+        guard let presignedURL = URL(string: presignedUrl), let image = sharedImage else {
+            completeWithResult(isSuccess: false, message: "Invalid presigned URL or image", loadingView: loadingView)
+            return
+        }
+        
+        // Convert image to JPEG data
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            completeWithResult(isSuccess: false, message: "Failed to convert image to JPEG", loadingView: loadingView)
+            return
+        }
+        
+        // Create upload request
+        var uploadRequest = URLRequest(url: presignedURL)
+        uploadRequest.httpMethod = "PUT"
+        uploadRequest.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        
+        // Create upload task
+        let uploadTask = URLSession.shared.uploadTask(with: uploadRequest, from: imageData) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                let message = "Upload failed: \(error.localizedDescription)"
+                print(message)
+                self.completeWithResult(isSuccess: false, message: message, loadingView: loadingView)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                let statusCode = httpResponse.statusCode
+                let isSuccess = (200...299).contains(statusCode)
+                
+                if isSuccess {
+                    let message = "Image uploaded successfully!"
+                    print(message)
+                    self.completeWithResult(isSuccess: true, message: message, loadingView: loadingView)
+                } else {
+                    let responseData = data != nil ? String(data: data!, encoding: .utf8) ?? "No data" : "No data"
+                    let message = "Upload failed with status code \(statusCode): \(responseData)"
+                    print(message)
+                    self.completeWithResult(isSuccess: false, message: message, loadingView: loadingView)
+                }
+            }
+        }
+        
+        uploadTask.resume()
     }
     
     // Method to refresh the token and retry the original request
