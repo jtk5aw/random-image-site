@@ -96,10 +96,14 @@ async function mobileApi() {
     $app.stage === "production"
       ? "mobile.jtken.com"
       : `${$app.stage}.mobile.jtken.com`;
-  const router = new sst.aws.Router("BackendRouter", {
-    domain: backendDomain,
+  const router = new sst.aws.Router("MyRouter", {
+    domain: {
+      name: backendDomain,
+      aliases: [`*.${backendDomain}`],
+    },
   });
   router.route("/", backendFunction.url);
+  router.routeBucket(`img.${backendDomain}`, viewableBucket);
 }
 
 async function createInitialUploadBucket(): Promise<{
