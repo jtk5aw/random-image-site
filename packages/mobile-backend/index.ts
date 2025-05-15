@@ -19,6 +19,11 @@ import { v4 as uuidv4 } from "uuid";
 import { bearerAuth } from "hono/bearer-auth";
 import { createMiddleware } from "hono/factory";
 
+// TODO: Longterm I think wiring up AWS Embedded Metrics Format (EMF) logs
+// would be interesting. Gives a per request way of getting metrics that automatically
+// get ingested into cloudwatch. Anecdotally I think this can be expensive but it doesn't seem
+// like it would be insane at traffic levels I'm expecting
+
 // Customized zodValidator
 class ValidationError extends Error {
   private details: any;
@@ -564,6 +569,10 @@ async function checkAndUpdateUploadRateLimit(
     const sortKey = `${UPLOAD_RATE_LIMIT_SK}#${hourKey}`;
     const HOURLY_LIMIT = 10;
 
+    // TODO: Need to make the DDB table have a TTL and add a TTL to all rate limit SKs so they don't build up forever
+    // I don't think this should have huge impacts on performance but it just doesn't make sense to keep these forever
+    // Unless I want to audit how often certain users are uploading? Then maybe its useful
+
     // Use UpdateItem with a conditional expression to atomically increment the counter
     // if it's less than the limit
     const updateParams = {
@@ -823,13 +832,14 @@ const app = new Hono<MyEnv>()
 
         // Create the command for putting an object in S3
         const putObjectCommand = new PutObjectCommand({
-          Bucket: Resource.InitialUploadBucket.name,
+          Bucket: Resource.InitialUploadBucketBackend.name,
           Key: key,
           Metadata: {
-            userId: userId,
+            // Note: These will be lowercased via the headers regardless so they should be lowercase here for clarity
+            userid: userId,
             group: params.group,
             provider: provider,
-            uploadTime: new Date().toISOString(),
+            uploadtime: new Date().toISOString(),
           },
         });
 

@@ -1,5 +1,7 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+import { access } from "fs";
+
 export default $config({
   app(input) {
     return {
@@ -38,21 +40,56 @@ async function mobileApi() {
     },
   });
 
-  const bucket = new sst.aws.Bucket("InitialUploadBucket");
-  sst.Linkable.wrap(sst.aws.Bucket, (bucket) => ({
-    properties: { name: bucket.name },
-    include: [
-      sst.aws.permission({
-        actions: ["s3:PutObject"],
-        resources: [bucket.arn, $interpolate`${bucket.arn}/*`],
-      }),
+  const notifyQueueDlq = new sst.aws.Queue("NotifyQueueDlq");
+  const notifyQueue = new sst.aws.Queue("NotifyQueue", {
+    dlq: notifyQueueDlq.arn,
+  });
+
+  const {
+    baseBucket: initialUploadBucket,
+    backendBucketLink: initialUploadBucketBackendLink,
+    postProcessBucketLink: initialUploadBucketPostProcessLink,
+  } = await createInitialUploadBucket();
+  const {
+    baseBucket: viewableBucket,
+    postProcessBucketLink: viewableBucketPostProcessLink,
+  } = await createViewableImagesBucket();
+  initialUploadBucket.notify({
+    notifications: [
+      {
+        name: "Subscriber",
+        queue: notifyQueue,
+        events: ["s3:ObjectCreated:*"],
+      },
     ],
-  }));
+  });
+  // TODO: Add a processor on the DLQ to check the state of the object and make
+  // some decision about whether or not the user should be notified
+  notifyQueue.subscribe(
+    {
+      handler: "packages/mobile-backend/processor.handler",
+      link: [
+        initialUploadBucketPostProcessLink,
+        viewableBucketPostProcessLink,
+        userTable,
+      ],
+    },
+    {
+      batch: {
+        partialResponses: true,
+      },
+    },
+  );
 
   const backendFunction = new sst.aws.Function("BackendFunction", {
     handler: "packages/mobile-backend/index.handler",
     url: true,
-    link: [bucket, userTable, authTokenSecret, refreshTokenSecret],
+    link: [
+      initialUploadBucketBackendLink,
+      userTable,
+      authTokenSecret,
+      refreshTokenSecret,
+    ],
   });
 
   const backendDomain =
@@ -63,6 +100,83 @@ async function mobileApi() {
     domain: backendDomain,
   });
   router.route("/", backendFunction.url);
+}
+
+async function createInitialUploadBucket(): Promise<{
+  baseBucket: sst.aws.Bucket;
+  backendBucketLink: sst.Linkable;
+  postProcessBucketLink: sst.Linkable;
+}> {
+  const initialUploadBucket = new sst.aws.Bucket("InitialUploadBucket");
+  const initialUploadBackend = new sst.Linkable("InitialUploadBucketBackend", {
+    properties: {
+      name: initialUploadBucket.name,
+    },
+    include: [
+      sst.aws.permission({
+        actions: ["s3:PutObject"],
+        resources: [
+          initialUploadBucket.arn,
+          $interpolate`${initialUploadBucket.arn}/*`,
+        ],
+      }),
+    ],
+  });
+  const initiaulUploadPostProcess = new sst.Linkable(
+    "InitialUploadPostProcess",
+    {
+      properties: {
+        name: initialUploadBucket.name,
+      },
+      include: [
+        sst.aws.permission({
+          actions: [
+            "s3:GetObject",
+            "s3:PutObjectTagging",
+            "s3:GetObjectTagging",
+          ],
+          resources: [
+            initialUploadBucket.arn,
+            $interpolate`${initialUploadBucket.arn}/*`,
+          ],
+        }),
+      ],
+    },
+  );
+
+  return {
+    baseBucket: initialUploadBucket,
+    backendBucketLink: initialUploadBackend,
+    postProcessBucketLink: initiaulUploadPostProcess,
+  };
+}
+
+async function createViewableImagesBucket(): Promise<{
+  baseBucket: sst.aws.Bucket;
+  postProcessBucketLink: sst.Linkable;
+}> {
+  const viewableImageBucket = new sst.aws.Bucket("ViewableBucket", {
+    access: "cloudfront",
+  });
+  const viewablePostProcess = new sst.Linkable("ViewableBucketPostProcess", {
+    properties: {
+      name: viewableImageBucket.name,
+    },
+    include: [
+      sst.aws.permission({
+        actions: ["s3:PutObject"],
+        resources: [
+          viewableImageBucket.arn,
+          $interpolate`${viewableImageBucket.arn}/*`,
+        ],
+      }),
+    ],
+  });
+
+  return {
+    baseBucket: viewableImageBucket,
+    postProcessBucketLink: viewablePostProcess,
+  };
 }
 
 async function discordBot(app: any) {
