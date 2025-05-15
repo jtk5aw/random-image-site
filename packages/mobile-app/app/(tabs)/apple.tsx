@@ -9,11 +9,14 @@ import { ContentfulStatusCode } from "hono/utils/http-status";
 // I don't know why the require is necessary here but it works for now :shrug:
 const { hc } = require("hono/dist/client") as typeof import("hono/client");
 
+// TODO: This is a general todo for the code base but, its possible to check if a token
+// is expired before making a request with it. Might be worthwhile to add some short circuting around that
+// in here and in the share sheet
+
 const client = hc<AppType>("https://jacksonkennedy.mobile.jtken.com");
 
 const ACCESS_TOKEN_SECURE_STORE_KEY = "accessToken";
 const REFRESH_TOKEN_SECURE_STORE_KEY = "refreshToken";
-const CLIENT_ID = "com.jtken.randomimagesite";
 const SHARED_KEYCHAIN_GROUP = "7XNW9F5V9P.com.jtken.randomimagesite";
 
 // Makes request to refresh credentials if necessary
@@ -22,15 +25,40 @@ interface BearerToken {
     Authorization: string;
   };
 }
-interface ResponseAndNewCreds<T> {
-  response: T | InferResponseType<typeof client.refresh.$post>;
-  creds:
-    | {
-        accessToken: string;
-        refreshToken: string;
-      }
-    | undefined;
+// Helper type to determine if a type is from the refresh endpoint
+// Assuming InferResponseType<typeof client.refresh.$post> is a defined type, let's call it RefreshResponse for clarity
+type RefreshResponse = InferResponseType<typeof client.refresh.$post>;
+type Credentials = {
+  accessToken: string;
+  refreshToken: string;
+};
+
+// Case 1: Initial successful response (type T)
+interface InitialResponse<T> {
+  status: "initial_success";
+  response: T;
+  creds: undefined;
 }
+
+// Case 2: Successful refresh response (type RefreshResponse) AND new creds are provided
+interface RefreshSuccessResponse {
+  status: "refresh_success"; // Discriminant property
+  response: RefreshResponse;
+  creds: Credentials;
+}
+
+// Case 3: Refresh response (type RefreshResponse) BUT no new creds are provided
+interface RefreshFailedNoCredsResponse {
+  status: "refresh_failed_no_creds";
+  response: RefreshResponse;
+  creds: undefined;
+}
+
+type ResponseAndNewCreds<T> =
+  | InitialResponse<T>
+  | RefreshSuccessResponse
+  | RefreshFailedNoCredsResponse;
+
 async function makeCall<I extends BearerToken, O>(
   call: ClientRequest<{
     $post: {
@@ -47,10 +75,18 @@ async function makeCall<I extends BearerToken, O>(
   const resultJson = await result.json();
   // First call either succeeded or was a non access denied error
   if (result.ok || (!result.ok && result.status != 401)) {
-    return { response: resultJson, creds: undefined };
+    return {
+      status: "initial_success",
+      response: resultJson,
+      creds: undefined,
+    };
   }
   if (!refreshToken) {
-    return { response: resultJson, creds: undefined };
+    return {
+      status: "refresh_failed_no_creds",
+      response: resultJson,
+      creds: undefined,
+    };
   }
   // First call was an access denied and we have a refresh token. Attempt to refresh tokens
   const refreshCreds = await client.refresh.$post({
@@ -61,13 +97,21 @@ async function makeCall<I extends BearerToken, O>(
   const refreshJson = await refreshCreds.json();
   if (refreshJson.success == false) {
     console.log(refreshJson.message);
-    return { response: refreshJson, creds: undefined };
+    return {
+      status: "refresh_failed_no_creds",
+      response: refreshJson,
+      creds: undefined,
+    };
   }
   const tokens = refreshJson.value;
   input.header.Authorization = `Bearer ${tokens.accessToken}`;
   const newCredsResult = await call.$post(input);
   const newCredsResultJson = await newCredsResult.json();
-  return { response: newCredsResultJson, creds: tokens };
+  return {
+    status: "refresh_success",
+    response: newCredsResultJson,
+    creds: tokens,
+  };
 }
 
 async function makeJunkLoginCall() {
@@ -85,7 +129,11 @@ async function makeJunkLoginCall() {
 async function makeTestCall(
   credential: string,
   refreshCredential: string | null,
-) {
+): Promise<
+  | undefined
+  | { refreshSuccess: true; credentials: Credentials }
+  | { refreshSuccess: false }
+> {
   const result = await makeCall(
     client.api.test,
     {
@@ -95,8 +143,14 @@ async function makeTestCall(
     },
     refreshCredential,
   );
-  console.log(result);
-  return result.creds;
+  console.log(result.status);
+  if (result.status === "refresh_success") {
+    return { refreshSuccess: true, credentials: result.creds };
+  }
+  if (result.status === "refresh_failed_no_creds") {
+    return { refreshSuccess: false };
+  }
+  return;
 }
 
 export default function App() {
@@ -181,7 +235,6 @@ export default function App() {
       console.log("FAILURE");
       return;
     }
-    console.log("Refresh token: " + refreshCredential);
     try {
       const result = await client.refresh.$post({
         header: {
@@ -306,9 +359,20 @@ export default function App() {
           <Button
             title="Make test call"
             onPress={async () => {
-              const creds = await makeTestCall(credential, refreshCredential);
-              if (creds) {
-                storeCreds(creds.accessToken, creds.refreshToken);
+              const testCallResult = await makeTestCall(
+                credential,
+                refreshCredential,
+              );
+              if (testCallResult === undefined) {
+                return;
+              }
+              if (testCallResult.refreshSuccess) {
+                storeCreds(
+                  testCallResult.credentials.accessToken,
+                  testCallResult.credentials.refreshToken,
+                );
+              } else {
+                clearStorage();
               }
             }}
           />

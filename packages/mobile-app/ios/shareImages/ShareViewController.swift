@@ -176,7 +176,7 @@ class ShareViewController: UIViewController {
     }
     
     // Helper method to display result and complete the extension
-    private func completeWithResult(isSuccess: Bool, message: String, loadingView: UIView) {
+    private func completeWithResult(isSuccess: Bool, message: String, loadingView: UIView, failedRefresh: Bool = false) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
@@ -186,7 +186,8 @@ class ShareViewController: UIViewController {
             // Show success or failure alert
             let alertController = UIAlertController(
                 title: isSuccess ? "Success!" : "Failure!",
-                message: isSuccess ? "Image uploaded successfully!" : "Failed to upload",
+                // TODO: Replace this "please login" with an actual redirect to the app someday 
+                message: isSuccess ? "Image uploaded successfully!" : failedRefresh ? "Please login in the app" : "Failed to upload",
                 preferredStyle: .alert
             )
             
@@ -427,13 +428,13 @@ class ShareViewController: UIViewController {
             
             if let error = error {
                 let message = "Token refresh failed: \(error.localizedDescription)"
-                self.completeWithResult(isSuccess: false, message: message, loadingView: loadingView)
+                self.completeWithResult(isSuccess: false, message: message, loadingView: loadingView, failedRefresh: true)
                 return
             }
             
             guard let data = data else {
                 let message = "Token refresh failed: No data received"
-                self.completeWithResult(isSuccess: false, message: message, loadingView: loadingView)
+                self.completeWithResult(isSuccess: false, message: message, loadingView: loadingView, failedRefresh: true)
                 return
             }
             
@@ -465,7 +466,7 @@ class ShareViewController: UIViewController {
                 } else {
                     let responseStr = String(data: data, encoding: .utf8) ?? "Invalid response format"
                     let message = "Token refresh failed: \(responseStr)"
-                    self.completeWithResult(isSuccess: false, message: message, loadingView: loadingView)
+                    self.completeWithResult(isSuccess: false, message: message, loadingView: loadingView, failedRefresh: true)
                 }
             } catch {
                 let message = "Failed to parse refresh response: \(error.localizedDescription)"
