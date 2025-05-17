@@ -10,6 +10,8 @@ export default $config({
       home: "aws",
       providers: {
         aws: {
+          profile:
+            input.stage === "production" ? "jackson-production" : "jackson-dev",
           version: "6.66.2",
           region: "us-west-1",
         },
@@ -17,7 +19,6 @@ export default $config({
     };
   },
   async run() {
-    await discordBot($app);
     await mobileApi();
   },
 });
@@ -92,11 +93,20 @@ async function mobileApi() {
     ],
   });
 
+  // WARNING: Because the DNS is in the management account,
+  // the Route53 records have to be setup manually and the referenced
+  // certifiates have to be setup manually as well. This includes anything
+  // needed to get subdomains working as well
   const backendDomain =
     $app.stage === "production" ? "jtken.com" : `${$app.stage}.jtken.com`;
   const router = new sst.aws.Router("MyRouter", {
     domain: {
       name: backendDomain,
+      dns: false,
+      cert:
+        $app.stage === "production"
+          ? "arn:aws:acm:us-east-1:043573420511:certificate/014a365d-6215-4f0c-a2b4-ab3765918952"
+          : "arn:aws:acm:us-east-1:126982764781:certificate/82b971ea-2df3-4ac4-ab7b-e0bfc5f218fc",
       aliases: [`*.${backendDomain}`],
     },
   });
