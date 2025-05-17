@@ -13,7 +13,7 @@ const { hc } = require("hono/dist/client") as typeof import("hono/client");
 // is expired before making a request with it. Might be worthwhile to add some short circuting around that
 // in here and in the share sheet
 
-const client = hc<AppType>("https://jacksonkennedy.mobile.jtken.com");
+const client = hc<AppType>("https://mobile.jacksonkennedy.jtken.com");
 
 const ACCESS_TOKEN_SECURE_STORE_KEY = "accessToken";
 const REFRESH_TOKEN_SECURE_STORE_KEY = "refreshToken";
@@ -54,10 +54,17 @@ interface RefreshFailedNoCredsResponse {
   creds: undefined;
 }
 
+// Case 4: Exception occurred
+interface RequestFailure {
+  status: "request_failure";
+  message: string;
+}
+
 type ResponseAndNewCreds<T> =
   | InitialResponse<T>
   | RefreshSuccessResponse
-  | RefreshFailedNoCredsResponse;
+  | RefreshFailedNoCredsResponse
+  | RequestFailure;
 
 async function makeCall<I extends BearerToken, O>(
   call: ClientRequest<{
@@ -71,47 +78,52 @@ async function makeCall<I extends BearerToken, O>(
   input: I,
   refreshToken: string | null,
 ): Promise<ResponseAndNewCreds<O>> {
-  const result = await call.$post(input);
-  const resultJson = await result.json();
-  // First call either succeeded or was a non access denied error
-  if (result.ok || (!result.ok && result.status != 401)) {
+  try {
+    const result = await call.$post(input);
+    const resultJson = await result.json();
+    // First call either succeeded or was a non access denied error
+    if (result.ok || (!result.ok && result.status != 401)) {
+      return {
+        status: "initial_success",
+        response: resultJson,
+        creds: undefined,
+      };
+    }
+    if (!refreshToken) {
+      return {
+        status: "refresh_failed_no_creds",
+        response: resultJson,
+        creds: undefined,
+      };
+    }
+    // First call was an access denied and we have a refresh token. Attempt to refresh tokens
+    const refreshCreds = await client.refresh.$post({
+      header: {
+        refresh_token: refreshToken,
+      },
+    });
+    const refreshJson = await refreshCreds.json();
+    if (refreshJson.success == false) {
+      console.log(refreshJson.message);
+      return {
+        status: "refresh_failed_no_creds",
+        response: refreshJson,
+        creds: undefined,
+      };
+    }
+    const tokens = refreshJson.value;
+    input.header.Authorization = `Bearer ${tokens.accessToken}`;
+    const newCredsResult = await call.$post(input);
+    const newCredsResultJson = await newCredsResult.json();
     return {
-      status: "initial_success",
-      response: resultJson,
-      creds: undefined,
+      status: "refresh_success",
+      response: newCredsResultJson,
+      creds: tokens,
     };
+  } catch (e) {
+    console.log("Exception occurred: " + e);
+    return { status: "request_failure", message: JSON.stringify(e) };
   }
-  if (!refreshToken) {
-    return {
-      status: "refresh_failed_no_creds",
-      response: resultJson,
-      creds: undefined,
-    };
-  }
-  // First call was an access denied and we have a refresh token. Attempt to refresh tokens
-  const refreshCreds = await client.refresh.$post({
-    header: {
-      refresh_token: refreshToken,
-    },
-  });
-  const refreshJson = await refreshCreds.json();
-  if (refreshJson.success == false) {
-    console.log(refreshJson.message);
-    return {
-      status: "refresh_failed_no_creds",
-      response: refreshJson,
-      creds: undefined,
-    };
-  }
-  const tokens = refreshJson.value;
-  input.header.Authorization = `Bearer ${tokens.accessToken}`;
-  const newCredsResult = await call.$post(input);
-  const newCredsResultJson = await newCredsResult.json();
-  return {
-    status: "refresh_success",
-    response: newCredsResultJson,
-    creds: tokens,
-  };
 }
 
 async function makeJunkLoginCall() {

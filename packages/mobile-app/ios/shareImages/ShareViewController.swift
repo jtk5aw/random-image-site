@@ -10,6 +10,9 @@ import MobileCoreServices
 import UniformTypeIdentifiers
 import Security
 
+// TODO TODO TODO: Add a timeout to network calls (or at least a way to cancel) 
+// just gets stuck spinning forever right now
+
 class ShareViewController: UIViewController {
 
     private var imageView: UIImageView?
@@ -144,7 +147,7 @@ class ShareViewController: UIViewController {
         self.view.addSubview(loadingView)
         
         // Get presigned URL from backend
-        let uploadUrl = "https://jacksonkennedy.mobile.jtken.com/api/upload/discord"
+        let uploadUrl = "https://mobile.jacksonkennedy.jtken.com/api/upload/discord"
         
         guard let url = URL(string: uploadUrl), let accessToken = accessToken, let image = sharedImage else {
             let alertController = UIAlertController(
@@ -319,7 +322,6 @@ class ShareViewController: UIViewController {
                            let presignedUrl = value["presignedUrl"] as? String,
                            let remainingUploads = value["remainingUploads"] as? Int {
                             
-                            print("Got presigned URL: \(presignedUrl)")
                             print("Remaining uploads: \(remainingUploads)")
                             
                             // Now upload the image to the presigned URL

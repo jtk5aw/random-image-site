@@ -34,8 +34,8 @@ async function mobileApi() {
     transform: {
       table: {
         billingMode: "PROVISIONED",
-        readCapacity: 15,
-        writeCapacity: 15,
+        readCapacity: $app.stage === "production" ? 15 : 5,
+        writeCapacity: $app.stage === "production" ? 15 : 5,
       },
     },
   });
@@ -92,17 +92,24 @@ async function mobileApi() {
     ],
   });
 
+  // TODO TODO TODO: Rethink this domain. Right now it makes it so that that
+  // its
+  // img.jacksonkennedy.mobile.jtken.com and jacksonkennedy.mobile.jtken.com
+  // when I think that
+  // img.jacksonkennedy.jtken.com and mobile.jacksonkennedy.jtken.com
+  // would be better.
+  // I don't think its a super hard change I do think that it will require changes to the mobile app,
+  // share sheet and here though and that will take time to deploy so I'm gonna do that another time
+
   const backendDomain =
-    $app.stage === "production"
-      ? "mobile.jtken.com"
-      : `${$app.stage}.mobile.jtken.com`;
+    $app.stage === "production" ? "jtken.com" : `${$app.stage}.jtken.com`;
   const router = new sst.aws.Router("MyRouter", {
     domain: {
       name: backendDomain,
       aliases: [`*.${backendDomain}`],
     },
   });
-  router.route("/", backendFunction.url);
+  router.route(`mobile.${backendDomain}/`, backendFunction.url);
   router.routeBucket(`img.${backendDomain}`, viewableBucket);
 }
 
