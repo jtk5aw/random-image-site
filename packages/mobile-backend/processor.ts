@@ -308,8 +308,6 @@ const processMessageAsync = async (
       }
       console.log("✓ User is authorized");
 
-      // TODO TODO TODO: It crashes here for some reason for a weird reason. It says it doesn't get some top level await so need to look into that
-
       // Step 2: Verify it's actually a JPEG image
       const jpegImageResult = await getJpegImage(getObjectResponse);
       if (jpegImageResult.isJpeg === false) {

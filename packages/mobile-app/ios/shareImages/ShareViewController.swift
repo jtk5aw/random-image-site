@@ -10,7 +10,7 @@ import MobileCoreServices
 import UniformTypeIdentifiers
 import Security
 
-// TODO TODO TODO: Add a timeout to network calls (or at least a way to cancel) 
+// TODO: Add a timeout to network calls (or at least a way to cancel) 
 // just gets stuck spinning forever right now
 
 class ShareViewController: UIViewController {

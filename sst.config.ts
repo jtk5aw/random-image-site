@@ -92,15 +92,6 @@ async function mobileApi() {
     ],
   });
 
-  // TODO TODO TODO: Rethink this domain. Right now it makes it so that that
-  // its
-  // img.jacksonkennedy.mobile.jtken.com and jacksonkennedy.mobile.jtken.com
-  // when I think that
-  // img.jacksonkennedy.jtken.com and mobile.jacksonkennedy.jtken.com
-  // would be better.
-  // I don't think its a super hard change I do think that it will require changes to the mobile app,
-  // share sheet and here though and that will take time to deploy so I'm gonna do that another time
-
   const backendDomain =
     $app.stage === "production" ? "jtken.com" : `${$app.stage}.jtken.com`;
   const router = new sst.aws.Router("MyRouter", {
