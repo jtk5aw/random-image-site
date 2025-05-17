@@ -2,7 +2,15 @@ use std::io::Read;
 
 use async_trait::async_trait;
 use aws_sdk_dynamodb::error::SdkError as S3SdkError;
-use aws_sdk_s3::{operation::{list_objects::ListObjectsError, get_object::GetObjectError, write_get_object_response::WriteGetObjectResponseError}, Client as S3Client, types::Object, primitives::ByteStream};
+use aws_sdk_s3::{
+    operation::{
+        get_object::GetObjectError, list_objects::ListObjectsError,
+        write_get_object_response::WriteGetObjectResponseError,
+    },
+    primitives::ByteStream,
+    types::Object,
+    Client as S3Client,
+};
 use tracing::{info, instrument};
 
 #[derive(Debug)]
@@ -49,61 +57,52 @@ pub trait S3Util {
     async fn list_items(
         &self,
         bucket_name: &str,
-        prefix: Option<&str>
+        prefix: Option<&str>,
     ) -> Result<Vec<Object>, S3UtilError>;
 
-    async fn get_file_from_s3_url(
-        &self,
-        url: &str
-    ) -> Result<Vec<u8>, S3UtilError>;
+    async fn get_file_from_s3_url(&self, url: &str) -> Result<Vec<u8>, S3UtilError>;
 
     async fn send_to_get_object_response(
-        &self, 
-        route: String, 
-        token: String, 
-        bytes: Vec<u8>
+        &self,
+        route: String,
+        token: String,
+        bytes: Vec<u8>,
     ) -> Result<(), S3UtilError>;
 }
 
 #[async_trait]
 impl S3Util for S3Client {
-
     ///
-    /// Lists the objects in the provided bucket. Optionally filters based on the provided prefix. 
+    /// Lists the objects in the provided bucket. Optionally filters based on the provided prefix.
     /// Returns a vector of Object's containing metadata about the S3 objects listed.
     ///
     /// # Arguments
-    /// 
+    ///
     /// * `bucket_name` - The bucket whos contents are being listed
     /// * `prefix` - An optional string to filter the contents of the bucket on
-    /// 
+    ///
     /// # Result
     /// * `Ok(Vec<Object>)` - Array of Objects's that contain metadata about the S3 objects listed
-    /// * `Err(S3UtilError)` - Error in case an S3 call fails or some other issue occurs 
-    /// 
+    /// * `Err(S3UtilError)` - Error in case an S3 call fails or some other issue occurs
+    ///
     #[instrument(skip_all)]
     async fn list_items(
         &self,
         bucket_name: &str,
-        prefix: Option<&str>
+        prefix: Option<&str>,
     ) -> Result<Vec<Object>, S3UtilError> {
         // Build request to list all objects in the bucket adding the prefix if it exists
-        let list_objects_request = self
-            .list_objects()
-            .bucket(bucket_name);
+        let list_objects_request = self.list_objects().bucket(bucket_name);
 
         let list_objects_request = match prefix {
             Some(prefix_str) => list_objects_request.prefix(prefix_str),
-            None => list_objects_request
+            None => list_objects_request,
         };
 
         // Make the request to list objects and copy the metadata into a Vec
-        let list_objects_output = list_objects_request
-            .send()
-            .await?;
+        let list_objects_output = list_objects_request.send().await?;
 
-        let objects_list = list_objects_output
-            .contents();
+        let objects_list = list_objects_output.contents();
 
         info!("Found {} objects", objects_list.len());
 
@@ -112,66 +111,67 @@ impl S3Util for S3Client {
 
     ///
     /// Downloads the file using the provided presigned URL.
-    /// 
+    ///
     /// Taken from: https://github.com/awslabs/aws-lambda-rust-runtime/blob/d513b13b4c48122602c0690f55147607f3bcc0da/examples/basic-s3-object-lambda-thumbnail/src/s3.rs
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `url` - presigned url to be used to download the file
-    /// 
+    ///
     /// # Result
     /// * `Ok(Vec<u8>)` - Vector of bytes representing the S3 file that was downloaded
-    /// * `Err(S3UtilError)` - Error in case an S3 call fails or some other issue occurs 
-    /// 
+    /// * `Err(S3UtilError)` - Error in case an S3 call fails or some other issue occurs
+    ///
     #[instrument(skip_all)]
-    async fn get_file_from_s3_url(
-        &self,
-        url: &str
-    ) -> Result<Vec<u8>, S3UtilError> {
-
+    async fn get_file_from_s3_url(&self, url: &str) -> Result<Vec<u8>, S3UtilError> {
         tracing::info!("File URL: {}", url);
 
         let resp = ureq::get(url).call()?;
-        let len: usize = resp.header("Content-Length")
+        let len: usize = resp
+            .header("Content-Length")
             .unwrap()
             .parse()
             .map_err(|err| format!("Failed to parse Content-Length as int: {}", err).to_owned())?;
 
         let mut bytes: Vec<u8> = Vec::with_capacity(len);
 
-        std::io::Read::take(
-            resp.into_reader(), 
-            10_000_000
-        ).read_to_end(&mut bytes).map_err(|err| format!("Failed to read all bytes: {}", err))?;
+        std::io::Read::take(resp.into_reader(), 10_000_000)
+            .read_to_end(&mut bytes)
+            .map_err(|err| format!("Failed to read all bytes: {}", err))?;
 
         tracing::info!("Received {} bytes", bytes.len());
 
         Ok(bytes)
     }
-    
+
     ///
-    /// Writes the provided bytes to a get object response location. 
-    /// 
+    /// Writes the provided bytes to a get object response location.
+    ///
     /// Taken from: https://github.com/awslabs/aws-lambda-rust-runtime/blob/d513b13b4c48122602c0690f55147607f3bcc0da/examples/basic-s3-object-lambda-thumbnail/src/s3.rs
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `route` - Route from which bytes will be returned from
     /// * `token` - :shrug:
-    /// * `bytes` - Bytes to be written 
-    /// 
+    /// * `bytes` - Bytes to be written
+    ///
     /// # Result
     /// * `Ok()` - Data was successfully written to the output stream
-    /// * `Err(S3UtilError)` - Error in case an S3 call fails or some other issue occurs 
-    /// 
+    /// * `Err(S3UtilError)` - Error in case an S3 call fails or some other issue occurs
+    ///
     #[instrument(skip_all)]
     async fn send_to_get_object_response(
-        &self, 
-        route: String, 
-        token: String, 
-        bytes: Vec<u8>
+        &self,
+        route: String,
+        token: String,
+        bytes: Vec<u8>,
     ) -> Result<(), S3UtilError> {
-        tracing::info!("send file route {}, token {}, length {}", route, token, bytes.len());
+        tracing::info!(
+            "send file route {}, token {}, length {}",
+            route,
+            token,
+            bytes.len()
+        );
 
         let bytes = ByteStream::from(bytes);
 
@@ -187,8 +187,11 @@ impl S3Util for S3Client {
         match write {
             Ok(_) => Ok(()),
             Err(err) => {
-                tracing::error!("Failed to write the bytestream to the object response: {}", err);
-                
+                tracing::error!(
+                    "Failed to write the bytestream to the object response: {}",
+                    err
+                );
+
                 Err(err.into())
             }
         }

@@ -1,8 +1,8 @@
-use std::{fmt, str::FromStr, collections::HashMap};
+use std::{collections::HashMap, fmt, str::FromStr};
 
 use aws_sdk_dynamodb::types::AttributeValue;
-use strum::{IntoEnumIterator, ParseError, EnumProperty};
-use strum_macros::{EnumString, EnumIter, EnumProperty};
+use strum::{EnumProperty, IntoEnumIterator, ParseError};
+use strum_macros::{EnumIter, EnumProperty, EnumString};
 
 /** Model used to define reactions */
 // Note: a string is used instead of a bool because attributes must be strings at time of writing
@@ -40,7 +40,7 @@ impl Reactions {
 
 #[derive(Debug)]
 pub enum ReactionError {
-    ReactionParseError(ParseError)
+    ReactionParseError(ParseError),
 }
 
 impl From<ParseError> for ReactionError {
@@ -54,7 +54,7 @@ impl Reactions {
         let mut starting_counts = HashMap::new();
         for reaction in Reactions::active_reactions() {
             starting_counts.insert(reaction.to_string(), AttributeValue::N("0".to_owned()));
-        };
+        }
 
         starting_counts
     }

@@ -5,13 +5,13 @@ use chrono::Local;
 use lambda_utils::persistence::image_dynamo_dao::ImageDynamoDao;
 use serde::Serialize;
 
-use lambda_runtime::{service_fn, LambdaEvent};
-use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_lambda_events::encodings::Body;
+use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
+use lambda_runtime::{service_fn, LambdaEvent};
 
 use lambda_utils::aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders;
 use tracing::instrument;
-use tracing::log::{info, error};
+use tracing::log::{error, info};
 
 #[tokio::main]
 async fn main() -> Result<(), lambda_runtime::Error> {
@@ -26,9 +26,12 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     let environment_variables = EnvironmentVariables::build();
     let aws_clients = AwsClients::build().await;
 
-    lambda_runtime::run(service_fn(|request: LambdaEvent<ApiGatewayProxyRequest>| {
-        handler(&environment_variables, &aws_clients, request.payload)
-    })).await?;
+    lambda_runtime::run(service_fn(
+        |request: LambdaEvent<ApiGatewayProxyRequest>| {
+            handler(&environment_variables, &aws_clients, request.payload)
+        },
+    ))
+    .await?;
 
     Ok(())
 }
@@ -44,9 +47,9 @@ struct ResponseBody {
 
 #[instrument(skip_all)]
 async fn handler(
-    environment_variables: &EnvironmentVariables, 
-    aws_clients: &AwsClients, 
-    req: ApiGatewayProxyRequest
+    environment_variables: &EnvironmentVariables,
+    aws_clients: &AwsClients,
+    req: ApiGatewayProxyRequest,
 ) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
     info!("handling a request: {:?}", req);
 
@@ -57,7 +60,6 @@ async fn handler(
         dynamodb_client: &aws_clients.dynamodb_client,
     };
 
-
     if req.http_method != Method::GET {
         panic!("Only handle GET requests should not receive any other request type");
     }
@@ -67,36 +69,47 @@ async fn handler(
 
     info!("Today is {:?}", today);
 
-    let set_image = match image_dao.get_image(
-            HARDCODED_PREFIX,
-            today
-        ).await {
-            Ok(output) => Ok(output),
-            Err(err) => {
-                error!("Object is not already set for today {} for reason {:?}", today_as_string, err);
-                Err(ApiGatewayProxyResponseWithoutHeaders {
-                    status_code: 500, 
-                    body: Body::Text(format!("Failed to get random object for the day: {:?}", err)), 
-                    is_base_64_encoded: false
-                }.build_full_response())
+    let set_image = match image_dao.get_image(HARDCODED_PREFIX, today).await {
+        Ok(output) => Ok(output),
+        Err(err) => {
+            error!(
+                "Object is not already set for today {} for reason {:?}",
+                today_as_string, err
+            );
+            Err(ApiGatewayProxyResponseWithoutHeaders {
+                status_code: 500,
+                body: Body::Text(format!(
+                    "Failed to get random object for the day: {:?}",
+                    err
+                )),
+                is_base_64_encoded: false,
             }
-        };
-    
+            .build_full_response())
+        }
+    };
+
     match set_image {
         Ok(image) => {
             info!("The currently set image object is: {:?}", image);
 
             // Fetch weekly recap images if necessary
-            let weekly_recap = 
-            if image.get_recents {
-                image_dao.get_recents(HARDCODED_PREFIX, today).await
-                    .map_or(None, |recent_images| 
+            let weekly_recap = if image.get_recents {
+                image_dao
+                    .get_recents(HARDCODED_PREFIX, today)
+                    .await
+                    .map_or(None, |recent_images| {
                         Some(
-                            recent_images.iter()
-                                .map(|image| format_image_url(&environment_variables.image_domain, &image.object_key))
-                                .collect::<Vec<String>>()
+                            recent_images
+                                .iter()
+                                .map(|image| {
+                                    format_image_url(
+                                        &environment_variables.image_domain,
+                                        &image.object_key,
+                                    )
+                                })
+                                .collect::<Vec<String>>(),
                         )
-                    )
+                    })
             } else {
                 None
             };
@@ -104,7 +117,7 @@ async fn handler(
             let response_body = ResponseBody {
                 url: format_image_url(&environment_variables.image_domain, &image.object_key),
                 days_until_get_recents: image.days_until_get_recents,
-                weekly_recap
+                weekly_recap,
             };
 
             let response = serde_json::to_string(&response_body)?;
@@ -112,19 +125,20 @@ async fn handler(
             Ok(ApiGatewayProxyResponseWithoutHeaders {
                 status_code: 200,
                 body: Body::Text(response),
-                is_base_64_encoded: false
-            }.build_full_response())
-        },
-        Err(api_gateway_response) => Ok(api_gateway_response)
+                is_base_64_encoded: false,
+            }
+            .build_full_response())
+        }
+        Err(api_gateway_response) => Ok(api_gateway_response),
     }
 }
 
 fn format_image_url(domain: &str, object_key: &str) -> String {
-    format!("https://{}/{}", domain, object_key) 
+    format!("https://{}/{}", domain, object_key)
 }
 
 struct AwsClients {
-    dynamodb_client: DynamoDbClient
+    dynamodb_client: DynamoDbClient,
 }
 
 impl AwsClients {
@@ -135,9 +149,7 @@ impl AwsClients {
 
         let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);
 
-        AwsClients {
-            dynamodb_client
-        }
+        AwsClients { dynamodb_client }
     }
 }
 
@@ -145,7 +157,7 @@ struct EnvironmentVariables {
     image_domain: String,
     table_name: String,
     table_primary_key: String,
-    table_sort_key: String, 
+    table_sort_key: String,
 }
 
 impl EnvironmentVariables {
@@ -159,11 +171,11 @@ impl EnvironmentVariables {
         let table_sort_key = std::env::var("TABLE_SORT_KEY")
             .expect("A TABLE_SORT_KEY must be set in this app's Lambda environment varialbes.");
 
-        EnvironmentVariables { 
+        EnvironmentVariables {
             image_domain,
             table_name,
             table_primary_key,
-            table_sort_key, 
+            table_sort_key,
         }
     }
 }

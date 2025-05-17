@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 
 use aws_config::BehaviorVersion;
-use chrono::Local;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
-use lambda_utils::{aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders, models::{Reactions, ReactionError}, persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError}};
+use chrono::Local;
+use lambda_utils::{
+    aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders,
+    models::{ReactionError, Reactions},
+    persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError},
+};
 use log::{error, info, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Error as SerdeJsonError;
@@ -11,7 +15,8 @@ use simple_logger::SimpleLogger;
 
 use aws_lambda_events::{
     encodings::Body,
-    event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse}, http::Method,
+    event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
+    http::Method,
 };
 use lambda_runtime::{service_fn, LambdaEvent};
 use uuid::Uuid;
@@ -27,9 +32,12 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     let environment_variables = EnvironmentVariables::build();
     let aws_clients = AwsClients::build().await;
 
-    lambda_runtime::run(service_fn(|request: LambdaEvent<ApiGatewayProxyRequest>| {
-        handler(&environment_variables, &aws_clients, request.payload)
-    })).await?;
+    lambda_runtime::run(service_fn(
+        |request: LambdaEvent<ApiGatewayProxyRequest>| {
+            handler(&environment_variables, &aws_clients, request.payload)
+        },
+    ))
+    .await?;
 
     Ok(())
 }
@@ -54,7 +62,7 @@ async fn handler(
         table_name: &environment_variables.table_name,
         primary_key: &environment_variables.table_primary_key,
         sort_key: &environment_variables.table_sort_key,
-        dynamodb_client: &aws_clients.dynamodb_client
+        dynamodb_client: &aws_clients.dynamodb_client,
     };
 
     let today_as_string = Local::now().format("%Y-%m-%d").to_string();
@@ -66,20 +74,12 @@ async fn handler(
     //  I think with the current direction of the API that makes more sense
 
     let result: Result<ApiGatewayProxyResponse, HandlerError> = match req.http_method {
-        Method::GET => handler_get(
-            req,
-            &today_as_string,
-            user_reaction_dao
-        )
-        .await
-        .map_err(HandlerError::GetError),
-        Method::PUT => handler_put(
-            req,
-            &today_as_string,
-            user_reaction_dao
-        )
-        .await
-        .map_err(HandlerError::PutError),
+        Method::GET => handler_get(req, &today_as_string, user_reaction_dao)
+            .await
+            .map_err(HandlerError::GetError),
+        Method::PUT => handler_put(req, &today_as_string, user_reaction_dao)
+            .await
+            .map_err(HandlerError::PutError),
         _ => panic!("Only handle GET or PUT requests should not receive any other request type"),
     };
 
@@ -106,7 +106,7 @@ struct GetResponseBody {
     uuid: String,
     reaction: String,
     favorite_image: String,
-    counts: HashMap<String, String>
+    counts: HashMap<String, String>,
 }
 
 // Error enum for GET
@@ -131,7 +131,7 @@ impl From<String> for GetHandlerError {
 async fn handler_get(
     req: ApiGatewayProxyRequest,
     today_as_string: &str,
-    user_reaction_dao: UserReactionDao<'_>
+    user_reaction_dao: UserReactionDao<'_>,
 ) -> Result<ApiGatewayProxyResponse, GetHandlerError> {
     let curr_uuid = req
         .query_string_parameters
@@ -139,24 +139,21 @@ async fn handler_get(
         .map_or(Uuid::new_v4().to_string(), |uuid| uuid.to_owned());
 
     // Get the current user items
-    let user_items = user_reaction_dao.get(
-        HARDCODED_PREFIX,
-        today_as_string, 
-        &curr_uuid
-    ).await;
+    let user_items = user_reaction_dao
+        .get(HARDCODED_PREFIX, today_as_string, &curr_uuid)
+        .await;
 
     // Get the current state of all reaction counts
-    let numeric_counts = user_reaction_dao.get_counts(
-        HARDCODED_PREFIX,
-        today_as_string
-    ).await
-    .unwrap_or_default();
-    
+    let numeric_counts = user_reaction_dao
+        .get_counts(HARDCODED_PREFIX, today_as_string)
+        .await
+        .unwrap_or_default();
+
     let response_body = GetResponseBody {
         uuid: curr_uuid,
         reaction: user_items.reaction,
         favorite_image: user_items.favorite_image,
-        counts: numeric_counts
+        counts: numeric_counts,
     };
 
     let response = serde_json::to_string(&response_body)?;
@@ -174,9 +171,8 @@ async fn handler_get(
 struct PutResponseBody {
     uuid: String,
     reaction: String,
-    counts: HashMap<String, String>
+    counts: HashMap<String, String>,
 }
-
 
 // Body of the request to be recevied
 #[derive(Serialize, Deserialize, Debug)]
@@ -221,7 +217,7 @@ impl From<String> for PutHandlerError {
 async fn handler_put(
     req: ApiGatewayProxyRequest,
     today_as_string: &str,
-    user_reaction_dao: UserReactionDao<'_>
+    user_reaction_dao: UserReactionDao<'_>,
 ) -> Result<ApiGatewayProxyResponse, PutHandlerError> {
     let body_as_str = req.body.ok_or_else(|| "Body does not exist".to_owned())?;
 
@@ -233,26 +229,26 @@ async fn handler_put(
     let reaction = Reactions::get_reaction(&body.reaction)?;
 
     // Set the reaction
-    let old_reaction = user_reaction_dao.set_reaction(
-        HARDCODED_PREFIX, today_as_string, uuid, &reaction
-    ).await?;
+    let old_reaction = user_reaction_dao
+        .set_reaction(HARDCODED_PREFIX, today_as_string, uuid, &reaction)
+        .await?;
 
-    info!("Request to update reaction completed. The old reaction was {}", old_reaction);
+    info!(
+        "Request to update reaction completed. The old reaction was {}",
+        old_reaction
+    );
 
     // Make request to update/get the counts
-    let numeric_counts = user_reaction_dao.update_counts(
-        HARDCODED_PREFIX,
-        today_as_string, 
-        &old_reaction, 
-        &reaction
-    ).await?;
-    
+    let numeric_counts = user_reaction_dao
+        .update_counts(HARDCODED_PREFIX, today_as_string, &old_reaction, &reaction)
+        .await?;
+
     info!("The counts are: {:?}", numeric_counts);
 
     let response_body = PutResponseBody {
         reaction: reaction.to_string(),
         uuid: uuid.to_owned(),
-        counts: numeric_counts
+        counts: numeric_counts,
     };
 
     let response = serde_json::to_string(&response_body)?;
@@ -266,7 +262,7 @@ async fn handler_put(
 }
 
 struct AwsClients {
-    dynamodb_client: DynamoDbClient
+    dynamodb_client: DynamoDbClient,
 }
 
 impl AwsClients {
@@ -277,9 +273,7 @@ impl AwsClients {
 
         let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);
 
-        AwsClients {
-            dynamodb_client
-        }
+        AwsClients { dynamodb_client }
     }
 }
 
@@ -292,12 +286,11 @@ struct EnvironmentVariables {
 
 impl EnvironmentVariables {
     fn build() -> EnvironmentVariables {
-        let table_name = std::env::var("TABLE_NAME")
-            .expect("A TABLE_NAME must be provided");
-        let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
-            .expect("A TABLE_PRIMARY_KEY must be provided");
-        let table_sort_key = std::env::var("TABLE_SORT_KEY")
-            .expect("A TABLE_SORT_KEY must be provided");
+        let table_name = std::env::var("TABLE_NAME").expect("A TABLE_NAME must be provided");
+        let table_primary_key =
+            std::env::var("TABLE_PRIMARY_KEY").expect("A TABLE_PRIMARY_KEY must be provided");
+        let table_sort_key =
+            std::env::var("TABLE_SORT_KEY").expect("A TABLE_SORT_KEY must be provided");
 
         EnvironmentVariables {
             table_name,

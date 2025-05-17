@@ -1,17 +1,16 @@
 use aws_config::BehaviorVersion;
+use aws_lambda_events::encodings::Body;
+use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
 use aws_lambda_events::http::Method;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use chrono::{FixedOffset, Local};
 use lambda_runtime::{service_fn, LambdaEvent};
-use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
-use aws_lambda_events::encodings::Body;
 
 use lambda_utils::aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders;
 use lambda_utils::persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError};
 use serde::{Deserialize, Serialize};
 use serde_json::Error as SerdeJsonError;
-use tracing::{instrument, info, error};
-
+use tracing::{error, info, instrument};
 
 #[tokio::main]
 async fn main() -> Result<(), lambda_runtime::Error> {
@@ -26,9 +25,12 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     let environment_variables = EnvironmentVariables::build();
     let aws_clients = AwsClients::build().await;
 
-    lambda_runtime::run(service_fn(|request: LambdaEvent<ApiGatewayProxyRequest>| {
-        handler(&environment_variables, &aws_clients, request.payload)
-    })).await?;
+    lambda_runtime::run(service_fn(
+        |request: LambdaEvent<ApiGatewayProxyRequest>| {
+            handler(&environment_variables, &aws_clients, request.payload)
+        },
+    ))
+    .await?;
 
     Ok(())
 }
@@ -37,9 +39,9 @@ const HARDCODED_PREFIX: &str = "discord";
 
 #[instrument(skip_all)]
 async fn handler(
-    environment_variables: &EnvironmentVariables, 
-    aws_clients: &AwsClients, 
-    req: ApiGatewayProxyRequest
+    environment_variables: &EnvironmentVariables,
+    aws_clients: &AwsClients,
+    req: ApiGatewayProxyRequest,
 ) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
     info!(event = ?req, "The req passed into the lambda is");
 
@@ -59,11 +61,7 @@ async fn handler(
 
     info!(today = today_as_string, "Today is");
 
-    let put_result = handle_put(
-        req, 
-        &today_as_string, 
-        user_reaction_dao
-    ).await;
+    let put_result = handle_put(req, &today_as_string, user_reaction_dao).await;
 
     Ok(put_result.map_or_else(
         |err| {
@@ -72,8 +70,9 @@ async fn handler(
             ApiGatewayProxyResponseWithoutHeaders {
                 status_code: 500,
                 body: Body::Text(format!("Failed to process the request: {:?}", err)),
-                is_base_64_encoded: false
-            }.build_full_response()
+                is_base_64_encoded: false,
+            }
+            .build_full_response()
         },
         |ok| ok,
     ))
@@ -122,7 +121,7 @@ impl From<String> for PutHandlerError {
 async fn handle_put(
     req: ApiGatewayProxyRequest,
     today_as_string: &str,
-    user_reaction_dao: UserReactionDao<'_>
+    user_reaction_dao: UserReactionDao<'_>,
 ) -> Result<ApiGatewayProxyResponse, PutHandlerError> {
     let body_as_str = req.body.ok_or_else(|| "Body does not exist".to_owned())?;
 
@@ -134,18 +133,18 @@ async fn handle_put(
     let favorite_image = &body.favorite_image;
 
     // Set the favorite image
-    let old_favorite_image = user_reaction_dao.set_favorite(
-        HARDCODED_PREFIX,
-        today_as_string, 
-        uuid, 
-        favorite_image
-    ).await?;
+    let old_favorite_image = user_reaction_dao
+        .set_favorite(HARDCODED_PREFIX, today_as_string, uuid, favorite_image)
+        .await?;
 
-    info!(old_favorite = old_favorite_image, "Request to update favorite image complete. The old favorite was");
+    info!(
+        old_favorite = old_favorite_image,
+        "Request to update favorite image complete. The old favorite was"
+    );
 
     let response_body = ResponseBody {
         favorite_image: favorite_image.to_owned(),
-        uuid: uuid.to_owned()
+        uuid: uuid.to_owned(),
     };
 
     let response = serde_json::to_string(&response_body)?;
@@ -154,11 +153,12 @@ async fn handle_put(
         status_code: 200,
         body: Body::Text(response),
         is_base_64_encoded: false,
-    }.build_full_response())
+    }
+    .build_full_response())
 }
 
 struct AwsClients {
-    dynamodb_client: DynamoDbClient
+    dynamodb_client: DynamoDbClient,
 }
 
 impl AwsClients {
@@ -169,9 +169,7 @@ impl AwsClients {
 
         let dynamodb_client = aws_sdk_dynamodb::Client::new(&config);
 
-        AwsClients {
-            dynamodb_client
-        }
+        AwsClients { dynamodb_client }
     }
 }
 
@@ -183,12 +181,11 @@ struct EnvironmentVariables {
 
 impl EnvironmentVariables {
     fn build() -> EnvironmentVariables {
-        let table_name = std::env::var("TABLE_NAME")
-            .expect("A TABLE_NAME must be provided");
-        let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
-            .expect("A TABLE_PRIMARY_KEY must be provided");
-        let table_sort_key = std::env::var("TABLE_SORT_KEY")
-            .expect("A TABLE_SORT_KEY must be provided");
+        let table_name = std::env::var("TABLE_NAME").expect("A TABLE_NAME must be provided");
+        let table_primary_key =
+            std::env::var("TABLE_PRIMARY_KEY").expect("A TABLE_PRIMARY_KEY must be provided");
+        let table_sort_key =
+            std::env::var("TABLE_SORT_KEY").expect("A TABLE_SORT_KEY must be provided");
 
         EnvironmentVariables {
             table_name,
