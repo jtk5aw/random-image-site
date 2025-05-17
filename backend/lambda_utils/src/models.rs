@@ -1,8 +1,24 @@
 use std::{collections::HashMap, fmt, str::FromStr};
 
 use aws_sdk_dynamodb::types::AttributeValue;
+use serde::Deserialize;
 use strum::{EnumProperty, IntoEnumIterator, ParseError};
 use strum_macros::{EnumIter, EnumProperty, EnumString};
+
+/** SST models **/
+#[derive(Deserialize, Debug)]
+pub struct SstBucket {
+    pub name: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SstTable {
+    pub name: String,
+    #[serde(rename = "primaryKey")]
+    pub primary_key: String,
+    #[serde(rename = "sortKey")]
+    pub sort_key: String,
+}
 
 /** Model used to define reactions */
 // Note: a string is used instead of a bool because attributes must be strings at time of writing

@@ -1428,6 +1428,7 @@ dependencies = [
  "chrono",
  "http 1.0.0",
  "log",
+ "serde",
  "strum",
  "strum_macros",
  "tracing",

@@ -4,8 +4,12 @@ use aws_sdk_s3::Client as S3Client;
 use chrono::{Duration, NaiveDate};
 use daily_setup_lambda::select_and_set::select_and_set_random_s3_object;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
-use lambda_utils::persistence::{
-    image_dynamo_dao::ImageDynamoDao, image_s3_dao::ImageS3Dao, user_reaction_dao::UserReactionDao,
+use lambda_utils::{
+    models::{SstBucket, SstTable},
+    persistence::{
+        image_dynamo_dao::ImageDynamoDao, image_s3_dao::ImageS3Dao,
+        user_reaction_dao::UserReactionDao,
+    },
 };
 use serde::Deserialize;
 use sst_sdk::Resource;
@@ -97,29 +101,15 @@ struct EnvironmentVariables {
     table_sort_key: String,
 }
 
-#[derive(Deserialize, Debug)]
-struct Bucket {
-    name: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct Table {
-    name: String,
-    #[serde(rename = "primaryKey")]
-    primary_key: String,
-    #[serde(rename = "sortKey")]
-    sort_key: String,
-}
-
 impl EnvironmentVariables {
     fn build() -> EnvironmentVariables {
         let resource =
             Resource::init().expect("Should be able to initialize the SST resource object");
 
-        let bucket: Bucket = resource
+        let bucket: SstBucket = resource
             .get("ViewableBucketListOnly")
             .expect("Should have a ViewableBucketListOnly resource");
-        let table: Table = resource
+        let table: SstTable = resource
             .get("ImageTable")
             .expect("Should have an ImageTable resource");
 
