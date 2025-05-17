@@ -423,7 +423,7 @@ impl UserReactionDao<'_> {
 
 /** Generate helper functions that don't require state */
 fn format_primary_key(group: &str, date: &str) -> String {
-    format!("{}_{}", group, date.to_string())
+    format!("{}_{}", group, date)
 }
 
 fn generate_numeric_counts(

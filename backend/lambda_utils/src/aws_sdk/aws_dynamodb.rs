@@ -284,7 +284,7 @@ fn build_multi_key_and_attribute_map(
         );
     }
 
-    let key_and_attribute_map = key_and_attribute_map;
+    
 
     key_and_attribute_map
 }

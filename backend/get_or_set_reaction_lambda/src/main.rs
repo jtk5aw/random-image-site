@@ -83,8 +83,7 @@ async fn handler(
         _ => panic!("Only handle GET or PUT requests should not receive any other request type"),
     };
 
-    Ok(result.map_or_else(
-        |err| {
+    Ok(result.unwrap_or_else(|err| {
             error!(
                 "Failed to properly handle the incoming request due to {:?}",
                 err
@@ -95,9 +94,7 @@ async fn handler(
                 is_base_64_encoded: false,
             }
             .build_full_response()
-        },
-        |ok| ok,
-    ))
+        }))
 }
 
 // Body of the response for both GET

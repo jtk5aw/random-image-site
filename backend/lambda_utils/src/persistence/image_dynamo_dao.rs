@@ -92,10 +92,10 @@ impl ImageDynamoDao<'_> {
             .map_err(|att_val| att_val.to_owned())?
             .to_owned();
 
-        let get_recents = item.get(GET_RECENTS).map_or(false, |get_recents| {
+        let get_recents = item.get(GET_RECENTS).is_some_and(|get_recents| {
             get_recents
                 .as_bool()
-                .map_or(false, |att_val| att_val.to_owned())
+                .is_ok_and(|att_val| att_val.to_owned())
         });
 
         let days_until_get_recents =
@@ -305,7 +305,7 @@ impl ImageDynamoDao<'_> {
 
 // Helper functinos that don't require state
 fn format_primary_key(group: &str, date: NaiveDate) -> String {
-    format!("{}_{}", group, date.format("%Y-%m-%d").to_string())
+    format!("{}_{}", group, date.format("%Y-%m-%d"))
 }
 
 fn parse_date_from_primary_key(value: &AttributeValue, default_date: NaiveDate) -> NaiveDate {

@@ -63,8 +63,7 @@ async fn handler(
 
     let put_result = handle_put(req, &today_as_string, user_reaction_dao).await;
 
-    Ok(put_result.map_or_else(
-        |err| {
+    Ok(put_result.unwrap_or_else(|err| {
             error!(error = ?err, "Failed to properly handle the incoming request due to");
 
             ApiGatewayProxyResponseWithoutHeaders {
@@ -73,9 +72,7 @@ async fn handler(
                 is_base_64_encoded: false,
             }
             .build_full_response()
-        },
-        |ok| ok,
-    ))
+        }))
 }
 
 // Body of the request to be recevied
