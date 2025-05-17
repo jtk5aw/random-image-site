@@ -10,7 +10,7 @@
     "hono": "^4.7.5",
     "jsonwebtoken": "^9.0.2",
     "sharp": "^0.34.1",
-    "sst": "^3.11.21",
+    "sst": "3.14.27",
     "valibot": "^1.0.0"
   },
   "devDependencies": {

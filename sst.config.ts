@@ -19,11 +19,55 @@ export default $config({
     };
   },
   async run() {
-    await mobileApi();
+    // Override links
+    sst.Linkable.wrap(sst.aws.Dynamo, (table) => ({
+      properties: {
+        name: table.name,
+        primaryKey: table.nodes.table.hashKey,
+        sortKey: table.nodes.table.rangeKey,
+      },
+      include: [
+        sst.aws.permission({
+          actions: ["dynamodb:*"],
+          resources: [table.arn],
+        }),
+      ],
+    }));
+
+    // Shared resources
+    const {
+      baseBucket: viewableBucket,
+      postProcessBucketLink: viewableBucketPostProcessLink,
+      listOnlyBucketLink: viewableBucketListOnlyLink,
+    } = await createViewableImagesBucket();
+    const { imageTable } = await createImageTable();
+
+    // Infra functions
+    await mobileApi(viewableBucket, viewableBucketPostProcessLink);
+    await backgroundEvents(imageTable, viewableBucketListOnlyLink);
   },
 });
 
-async function mobileApi() {
+async function backgroundEvents(
+  imageTable: sst.Dynamo,
+  viewableBucketListOnlyLink: sst.Linkable,
+) {
+  new sst.aws.Cron("DailySetupCron", {
+    function: {
+      handler: "./backend.daily_setup_lambda",
+      runtime: "rust",
+      architecture: "arm64",
+      memory: "128 MB",
+      link: [imageTable, viewableBucketListOnlyLink],
+    },
+    schedule: "cron(0 22 * * ? *)",
+  });
+}
+
+async function mobileApi(
+  viewableBucket: sst.Bucket,
+  viewableBucketPostProcessLink: sst.Linkable,
+) {
   const authTokenSecret = new sst.Secret("AuthTokenSecret");
   const refreshTokenSecret = new sst.Secret("RefreshTokenSecret");
   const userTable = new sst.aws.Dynamo("UserTable", {
@@ -51,10 +95,6 @@ async function mobileApi() {
     backendBucketLink: initialUploadBucketBackendLink,
     postProcessBucketLink: initialUploadBucketPostProcessLink,
   } = await createInitialUploadBucket();
-  const {
-    baseBucket: viewableBucket,
-    postProcessBucketLink: viewableBucketPostProcessLink,
-  } = await createViewableImagesBucket();
   initialUploadBucket.notify({
     notifications: [
       {
@@ -93,6 +133,12 @@ async function mobileApi() {
     ],
   });
 
+  // TODO TODO TODO: Move over the website infra into this SST. First deploy
+  // it into beta to test. Then, deploy the prod stage. Move all the data
+  // over from the management account when ready and then delete the resources
+  // that exist in the management account. For now the blog will remain
+  // but everything else should be removable
+
   // WARNING: Because the DNS is in the management account,
   // the Route53 records have to be setup manually and the referenced
   // certifiates have to be setup manually as well. This includes anything
@@ -112,6 +158,27 @@ async function mobileApi() {
   });
   router.route(`mobile.${backendDomain}/`, backendFunction.url);
   router.routeBucket(`img.${backendDomain}`, viewableBucket);
+}
+
+async function createImageTable(): Promise<{ imageTable: sst.aws.Dynamo }> {
+  const imageTable = new sst.aws.Dynamo("ImageTable", {
+    fields: {
+      pk: "string",
+      sk: "string",
+    },
+    primaryIndex: { hashKey: "pk", rangeKey: "sk" },
+    transform: {
+      table: {
+        billingMode: "PROVISIONED",
+        readCapacity: $app.stage === "production" ? 15 : 5,
+        writeCapacity: $app.stage === "production" ? 15 : 5,
+      },
+    },
+  });
+
+  return {
+    imageTable,
+  };
 }
 
 async function createInitialUploadBucket(): Promise<{
@@ -166,6 +233,7 @@ async function createInitialUploadBucket(): Promise<{
 async function createViewableImagesBucket(): Promise<{
   baseBucket: sst.aws.Bucket;
   postProcessBucketLink: sst.Linkable;
+  listOnlyBucketLink: sst.Linkable;
 }> {
   const viewableImageBucket = new sst.aws.Bucket("ViewableBucket", {
     access: "cloudfront",
@@ -184,10 +252,25 @@ async function createViewableImagesBucket(): Promise<{
       }),
     ],
   });
+  const viewableListOnly = new sst.Linkable("ViewableBucketListOnly", {
+    properties: {
+      name: viewableImageBucket.name,
+    },
+    include: [
+      sst.aws.permission({
+        actions: ["s3:ListBucket"],
+        resources: [
+          viewableImageBucket.arn,
+          $interpolate`${viewableImageBucket.arn}/*`,
+        ],
+      }),
+    ],
+  });
 
   return {
     baseBucket: viewableImageBucket,
     postProcessBucketLink: viewablePostProcess,
+    listOnlyBucketLink: viewableListOnly,
   };
 }
 

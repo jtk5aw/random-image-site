@@ -7,3 +7,6 @@ members = [
     "daily_setup_lambda",
     "lambda_utils"
 ]
+
+[workspace.dependencies]
+sst_sdk = "0.1.0"
