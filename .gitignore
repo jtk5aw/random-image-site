@@ -11,7 +11,7 @@
 README_LOCAL.md
 
 # Rust Target folder
-*/target
+**/target
 
 # CDK asset staging directory
 */.cdk.staging

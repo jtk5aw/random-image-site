@@ -89,7 +89,7 @@ async function imageApi(myRouter: MyRouter, imageTable: sst.aws.Dynamo) {
   const imageApi = new sst.aws.ApiGatewayV2("ImageApi");
 
   imageApi.route("GET /todays-image", {
-    handler: "./backend.get_image_lambda",
+    handler: "./packages/images-api.get_image_lambda",
     runtime: "rust",
     architecture: "arm64",
     memory: "128 MB",
@@ -101,21 +101,21 @@ async function imageApi(myRouter: MyRouter, imageTable: sst.aws.Dynamo) {
     link: [imageTable],
   });
   imageApi.route("GET /todays-metadata", {
-    handler: "./backend.get_or_set_reaction_lambda",
+    handler: "./packages/images-api.get_or_set_reaction_lambda",
     runtime: "rust",
     architecture: "arm64",
     memory: "128 MB",
     link: [imageTable],
   });
   imageApi.route("PUT /todays-metadata", {
-    handler: "./backend.get_or_set_reaction_lambda",
+    handler: "./packages/images-api.get_or_set_reaction_lambda",
     runtime: "rust",
     architecture: "arm64",
     memory: "128 MB",
     link: [imageTable],
   });
   imageApi.route("PUT /set-favorite", {
-    handler: "./backend.set_favorite_recent_lambda",
+    handler: "./packages/images-api.set_favorite_recent_lambda",
     runtime: "rust",
     architecture: "arm64",
     memory: "128 MB",
@@ -131,7 +131,7 @@ async function backgroundEvents(
 ) {
   new sst.aws.Cron("DailySetupCron", {
     function: {
-      handler: "./backend.daily_setup_lambda",
+      handler: "./packages/images-api.daily_setup_lambda",
       runtime: "rust",
       architecture: "arm64",
       memory: "128 MB",
