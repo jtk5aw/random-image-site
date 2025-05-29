@@ -4,8 +4,8 @@ use aws_config::BehaviorVersion;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use chrono::Local;
 use lambda_utils::{
-    aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders,
-    models::{ReactionError, Reactions},
+    aws_sdk::api_gateway::{ApiGatewayProxyResponseWithoutHeaders, extract_body_from_request},
+    models::{ReactionError, Reactions, SstTable},
     persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError},
 };
 use log::{error, info, LevelFilter};
@@ -15,10 +15,11 @@ use simple_logger::SimpleLogger;
 
 use aws_lambda_events::{
     encodings::Body,
-    event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
+    event::apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse},
     http::Method,
 };
 use lambda_runtime::{service_fn, LambdaEvent};
+use sst_sdk::Resource;
 use uuid::Uuid;
 
 #[tokio::main]
@@ -33,7 +34,7 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     let aws_clients = AwsClients::build().await;
 
     lambda_runtime::run(service_fn(
-        |request: LambdaEvent<ApiGatewayProxyRequest>| {
+        |request: LambdaEvent<ApiGatewayV2httpRequest>| {
             handler(&environment_variables, &aws_clients, request.payload)
         },
     ))
@@ -54,8 +55,8 @@ pub enum HandlerError {
 async fn handler(
     environment_variables: &EnvironmentVariables,
     aws_clients: &AwsClients,
-    req: ApiGatewayProxyRequest,
-) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
+    req: ApiGatewayV2httpRequest,
+) -> Result<ApiGatewayV2httpResponse, lambda_runtime::Error> {
     info!("handling a request: {:?}", req);
 
     let user_reaction_dao = UserReactionDao {
@@ -73,28 +74,31 @@ async fn handler(
     //  Also just consider making one get_metadata_lambda and then a seperate set_reaction_lambda
     //  I think with the current direction of the API that makes more sense
 
-    let result: Result<ApiGatewayProxyResponse, HandlerError> = match req.http_method {
-        Method::GET => handler_get(req, &today_as_string, user_reaction_dao)
-            .await
-            .map_err(HandlerError::GetError),
-        Method::PUT => handler_put(req, &today_as_string, user_reaction_dao)
-            .await
-            .map_err(HandlerError::PutError),
-        _ => panic!("Only handle GET or PUT requests should not receive any other request type"),
-    };
+    let result: Result<ApiGatewayV2httpResponse, HandlerError> =
+        match req.request_context.http.method {
+            Method::GET => handler_get(req, &today_as_string, user_reaction_dao)
+                .await
+                .map_err(HandlerError::GetError),
+            Method::PUT => handler_put(req, &today_as_string, user_reaction_dao)
+                .await
+                .map_err(HandlerError::PutError),
+            _ => {
+                panic!("Only handle GET or PUT requests should not receive any other request type")
+            }
+        };
 
     Ok(result.unwrap_or_else(|err| {
-            error!(
-                "Failed to properly handle the incoming request due to {:?}",
-                err
-            );
-            ApiGatewayProxyResponseWithoutHeaders {
-                status_code: 500,
-                body: Body::Text(format!("Failed to process the request: {:?}", err)),
-                is_base_64_encoded: false,
-            }
-            .build_full_response()
-        }))
+        error!(
+            "Failed to properly handle the incoming request due to {:?}",
+            err
+        );
+        ApiGatewayProxyResponseWithoutHeaders {
+            status_code: 500,
+            body: Body::Text(format!("Failed to process the request: {:?}", err)),
+            is_base_64_encoded: false,
+        }
+        .build_v2_response()
+    }))
 }
 
 // Body of the response for both GET
@@ -126,10 +130,10 @@ impl From<String> for GetHandlerError {
 }
 
 async fn handler_get(
-    req: ApiGatewayProxyRequest,
+    req: ApiGatewayV2httpRequest,
     today_as_string: &str,
     user_reaction_dao: UserReactionDao<'_>,
-) -> Result<ApiGatewayProxyResponse, GetHandlerError> {
+) -> Result<ApiGatewayV2httpResponse, GetHandlerError> {
     let curr_uuid = req
         .query_string_parameters
         .first("uuid")
@@ -160,7 +164,7 @@ async fn handler_get(
         body: Body::Text(response),
         is_base_64_encoded: false,
     }
-    .build_full_response())
+    .build_v2_response())
 }
 
 // Body of the response for the PUT
@@ -212,12 +216,14 @@ impl From<String> for PutHandlerError {
 }
 
 async fn handler_put(
-    req: ApiGatewayProxyRequest,
+    req: ApiGatewayV2httpRequest,
     today_as_string: &str,
     user_reaction_dao: UserReactionDao<'_>,
-) -> Result<ApiGatewayProxyResponse, PutHandlerError> {
-    let body_as_str = req.body.ok_or_else(|| "Body does not exist".to_owned())?;
+) -> Result<ApiGatewayV2httpResponse, PutHandlerError> {
+    let body_as_str = extract_body_from_request(&req)
+        .map_err(PutHandlerError::LocalError)?;
 
+    info!("body_as_str: {:?}", body_as_str);
     let body: RequestBody = serde_json::from_str(&body_as_str)?;
 
     info!("body_as_str: {}, body: {:?}", body_as_str, body);
@@ -255,7 +261,7 @@ async fn handler_put(
         body: Body::Text(response),
         is_base_64_encoded: false,
     }
-    .build_full_response())
+    .build_v2_response())
 }
 
 struct AwsClients {
@@ -283,16 +289,16 @@ struct EnvironmentVariables {
 
 impl EnvironmentVariables {
     fn build() -> EnvironmentVariables {
-        let table_name = std::env::var("TABLE_NAME").expect("A TABLE_NAME must be provided");
-        let table_primary_key =
-            std::env::var("TABLE_PRIMARY_KEY").expect("A TABLE_PRIMARY_KEY must be provided");
-        let table_sort_key =
-            std::env::var("TABLE_SORT_KEY").expect("A TABLE_SORT_KEY must be provided");
+        let resource = Resource::init().expect("Should be able to initialize SST resource");
+        let table: SstTable = resource
+            .get("ImageTable")
+            .expect("Should be able t get ImageTable");
 
         EnvironmentVariables {
-            table_name,
-            table_primary_key,
-            table_sort_key,
+            table_name: table.name,
+            table_primary_key: table.primary_key,
+            table_sort_key: table.sort_key,
         }
     }
 }
+

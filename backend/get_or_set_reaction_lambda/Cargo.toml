@@ -23,6 +23,7 @@ aws-config = "1.0.1"
 aws_lambda_events = "0.12.1"
 # AWS SDKs
 aws-sdk-dynamodb = "1.3.0"
+sst_sdk = { workspace = true }
 
 # Local dependencies
 lambda_utils = { path = "../lambda_utils", version = "0.1.0" }

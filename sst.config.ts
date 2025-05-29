@@ -2,6 +2,20 @@
 
 import { access } from "fs";
 
+// TODO: All the types in this file aren't autocompleted so a lot of them are
+// wrong (e.g sst.Bucket vs sst.aws.Bucket) this should be fixed
+
+// TODO: It should be able to set up the Route53 stuff in here with manually
+// written code. Only problem is in Prod it would require running SST against two accounts. Unsure if that's supported out of the box
+
+// TODO: Try to see if its possible to protect API GW v2 by
+// only allowing calls originating from CloudFront distribution.
+
+interface MyRouter {
+  router: sst.aws.Router;
+  backendDomain: string;
+}
+
 export default $config({
   app(input) {
     return {
@@ -42,14 +56,77 @@ export default $config({
     } = await createViewableImagesBucket();
     const { imageTable } = await createImageTable();
 
+    // WARNING: Because the DNS is in the management account,
+    // the Route53 records have to be setup manually and the referenced
+    // certifiates have to be setup manually as well. This includes anything
+    // needed to get subdomains working as well
+    const backendDomain =
+      $app.stage === "production" ? "jtken.com" : `${$app.stage}.jtken.com`;
+    const router = new sst.aws.Router("MyRouter", {
+      domain: {
+        name: backendDomain,
+        dns: false,
+        cert:
+          $app.stage === "production"
+            ? "arn:aws:acm:us-east-1:043573420511:certificate/014a365d-6215-4f0c-a2b4-ab3765918952"
+            : "arn:aws:acm:us-east-1:126982764781:certificate/82b971ea-2df3-4ac4-ab7b-e0bfc5f218fc",
+        aliases: [`*.${backendDomain}`],
+      },
+    });
+    const myRouter: MyRouter = {
+      router,
+      backendDomain,
+    };
+
     // Infra functions
-    await mobileApi(viewableBucket, viewableBucketPostProcessLink);
+    await imageApi(myRouter, imageTable);
+    await mobileApi(myRouter, viewableBucket, viewableBucketPostProcessLink);
     await backgroundEvents(imageTable, viewableBucketListOnlyLink);
   },
 });
 
+async function imageApi(myRouter: MyRouter, imageTable: sst.aws.Dynamo) {
+  const imageApi = new sst.aws.ApiGatewayV2("ImageApi");
+
+  imageApi.route("GET /todays-image", {
+    handler: "./backend.get_image_lambda",
+    runtime: "rust",
+    architecture: "arm64",
+    memory: "128 MB",
+    environment: {
+      // TODO: make this a constant somehow so it's not defined twice.
+      // or maybe a function on myRouter
+      IMAGE_DOMAIN: `img.${myRouter.backendDomain}`,
+    },
+    link: [imageTable],
+  });
+  imageApi.route("GET /todays-metadata", {
+    handler: "./backend.get_or_set_reaction_lambda",
+    runtime: "rust",
+    architecture: "arm64",
+    memory: "128 MB",
+    link: [imageTable],
+  });
+  imageApi.route("PUT /todays-metadata", {
+    handler: "./backend.get_or_set_reaction_lambda",
+    runtime: "rust",
+    architecture: "arm64",
+    memory: "128 MB",
+    link: [imageTable],
+  });
+  imageApi.route("PUT /set-favorite", {
+    handler: "./backend.set_favorite_recent_lambda",
+    runtime: "rust",
+    architecture: "arm64",
+    memory: "128 MB",
+    link: [imageTable],
+  });
+
+  myRouter.router.route(`api.${myRouter.backendDomain}`, imageApi.url);
+}
+
 async function backgroundEvents(
-  imageTable: sst.Dynamo,
+  imageTable: sst.aws.Dynamo,
   viewableBucketListOnlyLink: sst.Linkable,
 ) {
   new sst.aws.Cron("DailySetupCron", {
@@ -65,7 +142,8 @@ async function backgroundEvents(
 }
 
 async function mobileApi(
-  viewableBucket: sst.Bucket,
+  myRouter: MyRouter,
+  viewableBucket: sst.aws.Bucket,
   viewableBucketPostProcessLink: sst.Linkable,
 ) {
   const authTokenSecret = new sst.Secret("AuthTokenSecret");
@@ -133,31 +211,11 @@ async function mobileApi(
     ],
   });
 
-  // TODO TODO TODO: Move over the website infra into this SST. First deploy
-  // it into beta to test. Then, deploy the prod stage. Move all the data
-  // over from the management account when ready and then delete the resources
-  // that exist in the management account. For now the blog will remain
-  // but everything else should be removable
-
-  // WARNING: Because the DNS is in the management account,
-  // the Route53 records have to be setup manually and the referenced
-  // certifiates have to be setup manually as well. This includes anything
-  // needed to get subdomains working as well
-  const backendDomain =
-    $app.stage === "production" ? "jtken.com" : `${$app.stage}.jtken.com`;
-  const router = new sst.aws.Router("MyRouter", {
-    domain: {
-      name: backendDomain,
-      dns: false,
-      cert:
-        $app.stage === "production"
-          ? "arn:aws:acm:us-east-1:043573420511:certificate/014a365d-6215-4f0c-a2b4-ab3765918952"
-          : "arn:aws:acm:us-east-1:126982764781:certificate/82b971ea-2df3-4ac4-ab7b-e0bfc5f218fc",
-      aliases: [`*.${backendDomain}`],
-    },
-  });
-  router.route(`mobile.${backendDomain}/`, backendFunction.url);
-  router.routeBucket(`img.${backendDomain}`, viewableBucket);
+  myRouter.router.route(
+    `mobile.${myRouter.backendDomain}/`,
+    backendFunction.url,
+  );
+  myRouter.router.routeBucket(`img.${myRouter.backendDomain}`, viewableBucket);
 }
 
 async function createImageTable(): Promise<{ imageTable: sst.aws.Dynamo }> {

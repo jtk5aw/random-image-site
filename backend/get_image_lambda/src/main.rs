@@ -2,14 +2,16 @@ use aws_config::BehaviorVersion;
 use aws_lambda_events::http::Method;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use chrono::Local;
+use lambda_utils::models::SstTable;
 use lambda_utils::persistence::image_dynamo_dao::ImageDynamoDao;
 use serde::Serialize;
 
 use aws_lambda_events::encodings::Body;
-use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
+use aws_lambda_events::event::apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse};
 use lambda_runtime::{service_fn, LambdaEvent};
 
 use lambda_utils::aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders;
+use sst_sdk::Resource;
 use tracing::instrument;
 use tracing::log::{error, info};
 
@@ -27,7 +29,7 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     let aws_clients = AwsClients::build().await;
 
     lambda_runtime::run(service_fn(
-        |request: LambdaEvent<ApiGatewayProxyRequest>| {
+        |request: LambdaEvent<ApiGatewayV2httpRequest>| {
             handler(&environment_variables, &aws_clients, request.payload)
         },
     ))
@@ -49,8 +51,8 @@ struct ResponseBody {
 async fn handler(
     environment_variables: &EnvironmentVariables,
     aws_clients: &AwsClients,
-    req: ApiGatewayProxyRequest,
-) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
+    req: ApiGatewayV2httpRequest,
+) -> Result<ApiGatewayV2httpResponse, lambda_runtime::Error> {
     info!("handling a request: {:?}", req);
 
     let image_dao = ImageDynamoDao {
@@ -84,7 +86,7 @@ async fn handler(
                 )),
                 is_base_64_encoded: false,
             }
-            .build_full_response())
+            .build_v2_response())
         }
     };
 
@@ -127,7 +129,7 @@ async fn handler(
                 body: Body::Text(response),
                 is_base_64_encoded: false,
             }
-            .build_full_response())
+            .build_v2_response())
         }
         Err(api_gateway_response) => Ok(api_gateway_response),
     }
@@ -164,18 +166,18 @@ impl EnvironmentVariables {
     fn build() -> EnvironmentVariables {
         let image_domain = std::env::var("IMAGE_DOMAIN")
             .expect("A IMAGE_DOMAIN must be set in this app's Lambda environment variables.");
-        let table_name = std::env::var("TABLE_NAME")
-            .expect("A TABLE_NAME must be set in this app's Lambda environment variables.");
-        let table_primary_key = std::env::var("TABLE_PRIMARY_KEY")
-            .expect("A TABLE_PRIMARY_KEY must be set in this app's Lambda environment varialbes.");
-        let table_sort_key = std::env::var("TABLE_SORT_KEY")
-            .expect("A TABLE_SORT_KEY must be set in this app's Lambda environment varialbes.");
+
+        let resource = Resource::init().expect("Should be able to initialize SST resource object");
+
+        let table: SstTable = resource
+            .get("ImageTable")
+            .expect("Should have an ImageTable resource");
 
         EnvironmentVariables {
             image_domain,
-            table_name,
-            table_primary_key,
-            table_sort_key,
+            table_name: table.name,
+            table_primary_key: table.primary_key,
+            table_sort_key: table.sort_key,
         }
     }
 }

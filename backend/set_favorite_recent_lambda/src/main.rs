@@ -1,15 +1,19 @@
 use aws_config::BehaviorVersion;
 use aws_lambda_events::encodings::Body;
-use aws_lambda_events::event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse};
+use aws_lambda_events::event::apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse};
 use aws_lambda_events::http::Method;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use chrono::{FixedOffset, Local};
 use lambda_runtime::{service_fn, LambdaEvent};
 
-use lambda_utils::aws_sdk::api_gateway::ApiGatewayProxyResponseWithoutHeaders;
+use lambda_utils::aws_sdk::api_gateway::{
+    extract_body_from_request, ApiGatewayProxyResponseWithoutHeaders,
+};
+use lambda_utils::models::SstTable;
 use lambda_utils::persistence::user_reaction_dao::{UserReactionDao, UserReactionDaoError};
 use serde::{Deserialize, Serialize};
 use serde_json::Error as SerdeJsonError;
+use sst_sdk::Resource;
 use tracing::{error, info, instrument};
 
 #[tokio::main]
@@ -26,7 +30,7 @@ async fn main() -> Result<(), lambda_runtime::Error> {
     let aws_clients = AwsClients::build().await;
 
     lambda_runtime::run(service_fn(
-        |request: LambdaEvent<ApiGatewayProxyRequest>| {
+        |request: LambdaEvent<ApiGatewayV2httpRequest>| {
             handler(&environment_variables, &aws_clients, request.payload)
         },
     ))
@@ -41,8 +45,8 @@ const HARDCODED_PREFIX: &str = "discord";
 async fn handler(
     environment_variables: &EnvironmentVariables,
     aws_clients: &AwsClients,
-    req: ApiGatewayProxyRequest,
-) -> Result<ApiGatewayProxyResponse, lambda_runtime::Error> {
+    req: ApiGatewayV2httpRequest,
+) -> Result<ApiGatewayV2httpResponse, lambda_runtime::Error> {
     info!(event = ?req, "The req passed into the lambda is");
 
     let user_reaction_dao = UserReactionDao {
@@ -52,7 +56,7 @@ async fn handler(
         dynamodb_client: &aws_clients.dynamodb_client,
     };
 
-    if req.http_method != Method::PUT {
+    if req.request_context.http.method != Method::PUT {
         panic!("Only handle PUT requests should not receive any other request type");
     }
 
@@ -64,15 +68,15 @@ async fn handler(
     let put_result = handle_put(req, &today_as_string, user_reaction_dao).await;
 
     Ok(put_result.unwrap_or_else(|err| {
-            error!(error = ?err, "Failed to properly handle the incoming request due to");
+        error!(error = ?err, "Failed to properly handle the incoming request due to");
 
-            ApiGatewayProxyResponseWithoutHeaders {
-                status_code: 500,
-                body: Body::Text(format!("Failed to process the request: {:?}", err)),
-                is_base_64_encoded: false,
-            }
-            .build_full_response()
-        }))
+        ApiGatewayProxyResponseWithoutHeaders {
+            status_code: 500,
+            body: Body::Text(format!("Failed to process the request: {:?}", err)),
+            is_base_64_encoded: false,
+        }
+        .build_v2_response()
+    }))
 }
 
 // Body of the request to be recevied
@@ -116,11 +120,11 @@ impl From<String> for PutHandlerError {
 }
 
 async fn handle_put(
-    req: ApiGatewayProxyRequest,
+    req: ApiGatewayV2httpRequest,
     today_as_string: &str,
     user_reaction_dao: UserReactionDao<'_>,
-) -> Result<ApiGatewayProxyResponse, PutHandlerError> {
-    let body_as_str = req.body.ok_or_else(|| "Body does not exist".to_owned())?;
+) -> Result<ApiGatewayV2httpResponse, PutHandlerError> {
+    let body_as_str = extract_body_from_request(&req).map_err(PutHandlerError::LocalError)?;
 
     let body: RequestBody = serde_json::from_str(&body_as_str)?;
 
@@ -151,7 +155,7 @@ async fn handle_put(
         body: Body::Text(response),
         is_base_64_encoded: false,
     }
-    .build_full_response())
+    .build_v2_response())
 }
 
 struct AwsClients {
@@ -178,16 +182,15 @@ struct EnvironmentVariables {
 
 impl EnvironmentVariables {
     fn build() -> EnvironmentVariables {
-        let table_name = std::env::var("TABLE_NAME").expect("A TABLE_NAME must be provided");
-        let table_primary_key =
-            std::env::var("TABLE_PRIMARY_KEY").expect("A TABLE_PRIMARY_KEY must be provided");
-        let table_sort_key =
-            std::env::var("TABLE_SORT_KEY").expect("A TABLE_SORT_KEY must be provided");
+        let resource = Resource::init().expect("Should be able to initialize SST resource");
+        let table: SstTable = resource
+            .get("ImageTable")
+            .expect("Should be able to get ImageTable");
 
         EnvironmentVariables {
-            table_name,
-            table_primary_key,
-            table_sort_key,
+            table_name: table.name,
+            table_primary_key: table.primary_key,
+            table_sort_key: table.sort_key,
         }
     }
 }
