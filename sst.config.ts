@@ -79,11 +79,25 @@ export default $config({
     };
 
     // Infra functions
+    await imageSite(myRouter);
     await imageApi(myRouter, imageTable);
     await mobileApi(myRouter, viewableBucket, viewableBucketPostProcessLink);
     await backgroundEvents(imageTable, viewableBucketListOnlyLink);
   },
 });
+
+async function imageSite(myRouter: MyRouter) {
+  // WARNING: Right now this requires that a build has already happened
+  const imageSite = new sst.aws.StaticSite("ImageSite", {
+    path: "packages/images-frontend/build",
+    router: {
+      instance: myRouter.router,
+    },
+    dev: {
+      command: "npm start",
+    },
+  });
+}
 
 async function imageApi(myRouter: MyRouter, imageTable: sst.aws.Dynamo) {
   const imageApi = new sst.aws.ApiGatewayV2("ImageApi");
