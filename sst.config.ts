@@ -61,14 +61,16 @@ export default $config({
     // certifiates have to be setup manually as well. This includes anything
     // needed to get subdomains working as well
     const backendDomain =
-      $app.stage === "production" ? "jtken.com" : `${$app.stage}.jtken.com`;
+      $app.stage === "production"
+        ? "prod.jtken.com"
+        : `${$app.stage}.jtken.com`;
     const router = new sst.aws.Router("MyRouter", {
       domain: {
         name: backendDomain,
         dns: false,
         cert:
           $app.stage === "production"
-            ? "arn:aws:acm:us-east-1:043573420511:certificate/014a365d-6215-4f0c-a2b4-ab3765918952"
+            ? "arn:aws:acm:us-east-1:043573420511:certificate/0c598c26-b453-47a2-bd13-027050d43ccc"
             : "arn:aws:acm:us-east-1:126982764781:certificate/82b971ea-2df3-4ac4-ab7b-e0bfc5f218fc",
         aliases: [`*.${backendDomain}`],
       },
@@ -89,12 +91,15 @@ export default $config({
 async function imageSite(myRouter: MyRouter) {
   // WARNING: Right now this requires that a build has already happened
   const imageSite = new sst.aws.StaticSite("ImageSite", {
-    path: "packages/images-frontend/build",
+    path: "packages/images-frontend/dist", // Updated to Vite output directory
     router: {
       instance: myRouter.router,
     },
+    environment: {
+      VITE_API_URL: `https://api.${myRouter.backendDomain}`,
+    },
     dev: {
-      command: "npm start",
+      command: "npm run dev", // Updated to Vite dev command
     },
   });
 }
