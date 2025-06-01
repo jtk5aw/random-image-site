@@ -92,7 +92,7 @@ export default $config({
 async function imageSite(myRouter: MyRouter) {
   // WARNING: Right now this requires that a build has already happened
   const imageSite = new sst.aws.StaticSite("ImageSite", {
-    path: "packages/images-frontend", // Updated to Vite output directory
+    path: "packages/images-frontend",
     build: {
       command: "npm run build", // This command runs every deploy
       output: "dist", // This directory is uploaded after build
