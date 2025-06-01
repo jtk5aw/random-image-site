@@ -31,6 +31,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Naming**: camelCase for JS/TS variables/functions, PascalCase for components, snake_case for Rust
 - **Imports**: Group by external/internal/local, alphabetize within groups
 
+## Critical Rules
+- **NEVER** use `npm --force` or equivalent flags for dependency installation
+- Always resolve dependency conflicts properly rather than forcing installation
+- Use package version pinning to avoid compatibility issues
+
 ## Project Structure
 - `/packages/images-api`: Rust lambdas for image-related functionality
   - `/daily_setup_lambda`: Lambda for daily image selection
