@@ -121,6 +121,7 @@ async function getJpegImage(
   // Check content type from metadata
   const contentType = response.ContentType;
   if (!contentType || !contentType.toLowerCase().includes("jpeg")) {
+    console.log("NOT_JPEG: Incorrect contentType");
     return { isJpeg: false };
   }
 
@@ -132,12 +133,16 @@ async function getJpegImage(
       const buffer = await streamToBuffer(stream);
 
       // JPEG files start with FF D8 FF
+      const isJpeg =
+        buffer.length >= 3 &&
+        buffer[0] === 0xff &&
+        buffer[1] === 0xd8 &&
+        buffer[2] === 0xff;
+      if (!isJpeg) {
+        console.log("NOT_JPEG: Incorrect magic bytes");
+      }
       return {
-        isJpeg:
-          buffer.length >= 3 &&
-          buffer[0] === 0xff &&
-          buffer[1] === 0xd8 &&
-          buffer[2] === 0xff,
+        isJpeg,
         buffer,
       };
     } catch (error) {
@@ -145,7 +150,7 @@ async function getJpegImage(
       return { isJpeg: false };
     }
   }
-
+  console.log("No response body");
   return { isJpeg: false };
 }
 
