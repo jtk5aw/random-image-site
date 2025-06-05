@@ -216,6 +216,7 @@ async function mobileApi(
         viewableBucketPostProcessLink,
         userTable,
       ],
+      nodejs: { install: ["sharp"] },
     },
     {
       batch: {
@@ -301,6 +302,36 @@ async function createInitialUploadBucket(): Promise<{
             $interpolate`${initialUploadBucket.arn}/*`,
           ],
         }),
+      ],
+    },
+  );
+
+  const _initialUploadLifecycle = new aws.s3.BucketLifecycleConfigurationV2(
+    "InitialUploadBucketLifecycle",
+    {
+      bucket: initialUploadBucket.name,
+      rules: [
+        {
+          id: "Successful-rule",
+          expiration: {
+            days: 1,
+          },
+          filter: {
+            tag: {
+              key: "state",
+              value: "SUCCESSFUL",
+            },
+          },
+          status: "Enabled",
+        },
+        {
+          id: "Everything-else-rule",
+          expiration: {
+            days: 90,
+          },
+          filter: {},
+          status: "Enabled",
+        },
       ],
     },
   );
