@@ -161,10 +161,13 @@ async function backgroundEvents(
       memory: "128 MB",
       link: [imageTable, viewableBucketListOnlyLink],
     },
-    event: {
-      time: new Date().toISOString().slice(0, 19) + "Z",
-    },
     schedule: "cron(0 22 * * ? *)",
+    transform: {
+      target: (args) => {
+        // Remove the custom input and let EventBridge send its default payload
+        delete args.input;
+      },
+    },
   });
 }
 
