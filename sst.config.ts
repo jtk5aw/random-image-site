@@ -161,6 +161,9 @@ async function backgroundEvents(
       memory: "128 MB",
       link: [imageTable, viewableBucketListOnlyLink],
     },
+    event: {
+      time: new Date().toISOString().slice(0, 19) + "Z",
+    },
     schedule: "cron(0 22 * * ? *)",
   });
 }
