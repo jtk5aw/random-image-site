@@ -67,3 +67,9 @@ Making the share extension required downloading xcode, opening the project in xc
 ## Or really just deprecate as much of the old stuff as possible/move it to sst v3
 ## I think there's a way to run sst v3 rust lambdas.
 ## So that would make the lift relatively easy
+
+
+### General notes
+
+I backed up the old ddb table in the management account.
+It's in AWS backups and if I ever want to restore it I can use that
