@@ -25,7 +25,11 @@ export default $config({
       providers: {
         aws: {
           profile:
-            input.stage === "production" ? "jackson-production" : "jackson-dev",
+            input.stage === "production"
+              ? "jackson-production"
+              : input.stage === "management"
+                ? "jackson-management"
+                : "jackson-dev",
           version: "6.66.2",
           region: "us-west-1",
         },
@@ -33,6 +37,12 @@ export default $config({
     };
   },
   async run() {
+    // In the management account I have some "special" resources
+    // I have a CDN that redirects jtken.com to prod.jtken.com
+    if ($app.stage === "management") {
+      await managementStack();
+      return;
+    }
     // Override links
     sst.Linkable.wrap(sst.aws.Dynamo, (table) => ({
       properties: {
@@ -88,6 +98,32 @@ export default $config({
     await backgroundEvents(imageTable, viewableBucketListOnlyLink);
   },
 });
+
+async function managementStack() {
+  const router = new sst.aws.Router("JtkenRedirect", {
+    domain: {
+      name: "jtken.com",
+      dns: false,
+      cert: "arn:aws:acm:us-east-1:961305444646:certificate/105e6c24-c755-47e0-910a-0562d1169502",
+    },
+    edge: {
+      viewerRequest: {
+        injection: `
+// Redirect jtken.com to prod.jtken.com
+if (event.request.headers.host.value === "jtken.com") {
+    return {
+        statusCode: 301,
+        statusDescription: "Moved Permanently",
+        headers: {
+            location: { value: "https://prod.jtken.com" + event.request.uri }
+        }
+    };
+}
+`,
+      },
+    },
+  });
+}
 
 async function imageSite(myRouter: MyRouter) {
   // WARNING: Right now this requires that a build has already happened
