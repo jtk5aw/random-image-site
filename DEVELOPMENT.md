@@ -15,6 +15,11 @@ npx sst secret set <secret-name> < <local-secret-file-name>
 Location: `packages/mobile-app/`
 Share sheet: `packages/mobile-app/ios/shareImages`
 
+NOTE TO SELF: This is in essence an ejected expo app.
+I forget if I actually performed the ejection or not (maybe I should if I haven't) but it 100% should be treated like one since I'm puttin gmy own code inside the ios/ directory.
+That also means the app.json file is basically dead weight and is doing very little (if anything).
+For example the icons it references will not make any difference
+
 For some reasong sometimes you have to change the objectversion from 70 to 53 for stuff to compile
 
 :shrug: I have literally zero clue why and haven't been able to look into what the problem is.
@@ -69,7 +74,7 @@ Making the share extension required downloading xcode, opening the project in xc
 ## So that would make the lift relatively easy
 
 
-### General notes
+## General notes
 
 I backed up the old ddb table in the management account.
 It's in AWS backups and if I ever want to restore it I can use that
