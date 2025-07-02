@@ -62,6 +62,17 @@ The share sheet just won't work as well on a simulator and isn't worth testing o
 Once you have that, just press the "play" button over on the right
 
 
+### Api endpoints
+
+Apparently it is a huge pain to read Info.plist from a expo app.
+You need to create an entire native module and link with it jsut to get it to work which is baffling to me.
+
+
+So, that means there's two ways of configuring the right api endpoint to use.
+The expo app uses .env files and the share extension uses Info.plist.
+I didnt' wanna bother linking with a native module for now so I have both
+
+
 ### Share extension other notes
 
 Making the share extension required downloading xcode, opening the project in xcode, setting up signing capabilitites and then adding a target that is the share extension.

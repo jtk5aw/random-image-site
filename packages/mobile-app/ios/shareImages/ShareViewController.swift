@@ -11,7 +11,11 @@ import UniformTypeIdentifiers
 import Security
 
 // TODO: Add a timeout to network calls (or at least a way to cancel) 
-// just gets stuck spinning forever right now
+// just gets stuck for a while right now 
+
+// TODO: Look into the memory leak in this. It keeps crashing after some amount of time
+// and I don't know why. It doesn't seem to be a problem though cause the share extension isn't 
+// meant to really keep running it can be restarted every time you want to use it
 
 class ShareViewController: UIViewController {
 
@@ -21,6 +25,18 @@ class ShareViewController: UIViewController {
     private var accessToken: String?
     private var refreshToken: String?
     private let accessGroup = "7XNW9F5V9P.com.jtken.randomimagesite"
+    private var currentLoadingView: UIView?
+    private var activeTasks: [URLSessionTask] = []
+    
+    // Method to read API endpoint from Info.plist
+    private func getApiEndpoint() -> String? {
+      guard let apiEndpoint = Bundle.main.object(forInfoDictionaryKey: "API_ENDPOINT") as? String else {
+            print("No API endpoint found")
+            return nil
+        }
+        print("API endpoint is: \(apiEndpoint)")
+        return apiEndpoint
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -129,7 +145,8 @@ class ShareViewController: UIViewController {
     }
     
     @objc private func cancelButtonTapped() {
-        // Complete the extension request - cancel
+        // Cancel any active network tasks and complete the extension request
+        cancelAllTasks()
         extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
     }
     
@@ -146,8 +163,30 @@ class ShareViewController: UIViewController {
         loadingView.addSubview(activityIndicator)
         self.view.addSubview(loadingView)
         
+        // Store reference for cleanup
+        currentLoadingView = loadingView
+        
+        // Clear the display image to free memory during upload
+        imageView?.image = nil
+        
         // Get presigned URL from backend
-        let uploadUrl = "https://mobile.jacksonkennedy.jtken.com/api/upload/discord"
+        guard let apiEndpoint = getApiEndpoint() else {
+            let alertController = UIAlertController(
+                title: "Internal failure",
+                message: "Failed to start upload",
+                preferredStyle: .alert
+            )
+            
+            alertController.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                self?.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+            })
+            
+            self.present(alertController, animated: true)
+            self.removeLoadingView()
+            return
+        }
+        
+        let uploadUrl = "\(apiEndpoint)/api/upload/discord"
         
         guard let url = URL(string: uploadUrl), let accessToken = accessToken, let image = sharedImage else {
             let alertController = UIAlertController(
@@ -156,12 +195,12 @@ class ShareViewController: UIViewController {
                 preferredStyle: .alert
             )
             
-            alertController.addAction(UIAlertAction(title: "OK", style: .default) { _ in
-                self.extensionContext!.completeRequest(returningItems: [], completionHandler: nil)
+            alertController.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                self?.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
             })
             
             self.present(alertController, animated: true)
-            loadingView.removeFromSuperview()
+            self.removeLoadingView()
             return
         }
         
@@ -178,28 +217,54 @@ class ShareViewController: UIViewController {
         )
     }
     
+    // Helper method to remove loading view safely
+    private func removeLoadingView() {
+        DispatchQueue.main.async { [weak self] in
+            self?.currentLoadingView?.removeFromSuperview()
+            self?.currentLoadingView = nil
+        }
+    }
+    
+    // Helper method to cancel all active network tasks
+    private func cancelAllTasks() {
+        for task in activeTasks {
+            task.cancel()
+        }
+        activeTasks.removeAll()
+    }
+    
     // Helper method to display result and complete the extension
     private func completeWithResult(isSuccess: Bool, message: String, loadingView: UIView, failedRefresh: Bool = false) {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else { 
+                // Even if self is nil, try to remove the loading view
+                DispatchQueue.main.async {
+                    loadingView.removeFromSuperview()
+                }
+                return 
+            }
             
             // Remove loading view
-            loadingView.removeFromSuperview()
+            self.removeLoadingView()
             
-            // Show success or failure alert
-            let alertController = UIAlertController(
-                title: isSuccess ? "Success!" : "Failure!",
-                // TODO: Replace this "please login" with an actual redirect to the app someday 
-                message: isSuccess ? "Image uploaded successfully!" : failedRefresh ? "Please login in the app" : "Failed to upload",
-                preferredStyle: .alert
-            )
-            
-            alertController.addAction(UIAlertAction(title: "OK", style: .default) { _ in
-                // Complete the extension request after user taps OK
-                self.extensionContext!.completeRequest(returningItems: [], completionHandler: nil)
-            })
-            
-            self.present(alertController, animated: true)
+            // Delay alert presentation to avoid UI conflicts
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                // Show success or failure alert
+                let alertController = UIAlertController(
+                    title: isSuccess ? "Success!" : "Failure!",
+                    // TODO: Replace this "please login" with an actual redirect to the app someday 
+                    message: isSuccess ? "Image uploaded successfully!" : failedRefresh ? "Please login in the app" : "Failed to upload",
+                    preferredStyle: .alert
+                )
+                
+                alertController.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+                    // Complete the extension request after user taps OK
+                    self?.cancelAllTasks()
+                    self?.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+                })
+                
+                self.present(alertController, animated: true)
+            }
         }
     }
     
@@ -356,6 +421,7 @@ class ShareViewController: UIViewController {
             }
         }
         
+        activeTasks.append(task)
         task.resume()
     }
     
@@ -405,6 +471,7 @@ class ShareViewController: UIViewController {
             }
         }
         
+        activeTasks.append(uploadTask)
         uploadTask.resume()
     }
     
@@ -414,7 +481,13 @@ class ShareViewController: UIViewController {
         originalRequest: URLRequest,
         loadingView: UIView
     ) {
-        guard let refreshURL = URL(string: "https://jacksonkennedy.mobile.jtken.com/refresh") else {
+        guard let apiEndpoint = getApiEndpoint() else {
+            let message = "Failed to start upload"
+            completeWithResult(isSuccess: false, message: message, loadingView: loadingView)
+            return
+        }
+        
+        guard let refreshURL = URL(string: "\(apiEndpoint)/refresh") else {
             let message = "Cannot create refresh URL"
             completeWithResult(isSuccess: false, message: message, loadingView: loadingView)
             return
@@ -476,6 +549,7 @@ class ShareViewController: UIViewController {
             }
         }
         
+        activeTasks.append(refreshTask)
         refreshTask.resume()
     }
     

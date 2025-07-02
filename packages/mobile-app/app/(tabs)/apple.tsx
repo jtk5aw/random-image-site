@@ -6,6 +6,7 @@ import * as Keychain from "react-native-keychain";
 import { AppType } from "../../../mobile-backend";
 import { ClientRequest, ClientResponse, InferResponseType } from "hono/client";
 import { ContentfulStatusCode } from "hono/utils/http-status";
+import { getApiEndpoint } from "../../constants/Config";
 // I don't know why the require is necessary here but it works for now :shrug:
 const { hc } = require("hono/dist/client") as typeof import("hono/client");
 
@@ -13,7 +14,7 @@ const { hc } = require("hono/dist/client") as typeof import("hono/client");
 // is expired before making a request with it. Might be worthwhile to add some short circuting around that
 // in here and in the share sheet
 
-const client = hc<AppType>("https://mobile.jacksonkennedy.jtken.com");
+const client = hc<AppType>(getApiEndpoint());
 
 const ACCESS_TOKEN_SECURE_STORE_KEY = "accessToken";
 const REFRESH_TOKEN_SECURE_STORE_KEY = "refreshToken";

@@ -2,7 +2,6 @@
 *.d.ts
 **/node_modules
 **/node_moduldes/.package_lock.json
-*.env
 *.pem
 *.idea
 **/.DS_Store

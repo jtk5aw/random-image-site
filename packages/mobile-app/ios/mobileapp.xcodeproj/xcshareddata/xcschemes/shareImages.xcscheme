@@ -57,6 +57,11 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
       launchAutomaticallySubstyle = "2">
+      <RemoteRunnable
+         runnableDebuggingMode = "0"
+         BundleIdentifier = "com.apple.mobilesafari"
+         RemotePath = "/var/containers/Bundle/Application/8C535CDD-007C-4550-B42C-3CE168360D1B/MobileSafari.app">
+      </RemoteRunnable>
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
