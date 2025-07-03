@@ -47,6 +47,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="daily-image"
+        options={{
+          title: "Daily Image",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={28} name="photo.fill" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="apple"
         options={{
           title: "Apple Auth",
