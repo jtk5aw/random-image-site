@@ -6,7 +6,7 @@ import * as Keychain from "react-native-keychain";
 import { AppType } from "../../../mobile-backend";
 import { ClientRequest, ClientResponse, InferResponseType } from "hono/client";
 import { ContentfulStatusCode } from "hono/utils/http-status";
-import { getApiEndpoint } from "../../constants/Config";
+import { getApiEndpoint, showAdminPanel } from "../../constants/Config";
 // I don't know why the require is necessary here but it works for now :shrug:
 const { hc } = require("hono/dist/client") as typeof import("hono/client");
 
@@ -364,42 +364,51 @@ export default function App() {
   return (
     <View style={styles.container}>
       {credential ? (
-        <View>
-          <Button
-            title="Does nothing lolz"
-            onPress={() => console.log(credential)}
-          />
-          <Button
-            title="Make test call"
-            onPress={async () => {
-              const testCallResult = await makeTestCall(
-                credential,
-                refreshCredential,
-              );
-              if (testCallResult === undefined) {
-                return;
-              }
-              if (testCallResult.refreshSuccess) {
-                storeCreds(
-                  testCallResult.credentials.accessToken,
-                  testCallResult.credentials.refreshToken,
+        showAdminPanel() ? (
+          <View>
+            <Button
+              title="Does nothing lolz"
+              onPress={() => console.log(credential)}
+            />
+            <Button
+              title="Make test call"
+              onPress={async () => {
+                const testCallResult = await makeTestCall(
+                  credential,
+                  refreshCredential,
                 );
-              } else {
-                clearStorage();
-              }
-            }}
-          />
-          <Button
-            title="Make Junk Login Call"
-            onPress={() => makeJunkLoginCall()}
-          />
-          <Button
-            title="Refresh tokens"
-            onPress={() => refreshAppleCredentials()}
-          />
-          <Button title="Sign in again" onPress={() => handleAppleRefresh()} />
-          <Button title="Clear credentials" onPress={() => clearStorage()} />
-        </View>
+                if (testCallResult === undefined) {
+                  return;
+                }
+                if (testCallResult.refreshSuccess) {
+                  storeCreds(
+                    testCallResult.credentials.accessToken,
+                    testCallResult.credentials.refreshToken,
+                  );
+                } else {
+                  clearStorage();
+                }
+              }}
+            />
+            <Button
+              title="Make Junk Login Call"
+              onPress={() => makeJunkLoginCall()}
+            />
+            <Button
+              title="Refresh tokens"
+              onPress={() => refreshAppleCredentials()}
+            />
+            <Button
+              title="Sign in again"
+              onPress={() => handleAppleRefresh()}
+            />
+            <Button title="Clear credentials" onPress={() => clearStorage()} />
+          </View>
+        ) : (
+          <View style={styles.container}>
+            <Text style={styles.text}> Logged in! </Text>
+          </View>
+        )
       ) : (
         <AppleAuthentication.AppleAuthenticationButton
           buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
@@ -426,6 +435,7 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 18,
+    color: "white",
     textAlign: "center",
     marginBottom: 20,
   },
