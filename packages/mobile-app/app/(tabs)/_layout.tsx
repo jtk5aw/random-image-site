@@ -29,7 +29,7 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="daily-image"
+        name="index"
         options={{
           title: "Daily Image",
           tabBarIcon: ({ color }) => (
@@ -40,7 +40,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="apple"
         options={{
-          title: "Apple Auth",
+          title: "Sign-In",
           tabBarIcon: ({ color }) => (
             <Entypo name="login" size={28} color={color} />
           ),
