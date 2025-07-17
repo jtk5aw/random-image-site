@@ -27,13 +27,14 @@ export default function DailyImageScreen() {
   const [showRecentImages, setShowRecentImages] = useState(false);
 
   // Use the centralized reactions hook
-  const { 
-    reaction, 
-    counts, 
-    favoriteUrl, 
-    toggleReaction, 
+  const {
+    reaction,
+    counts,
+    favoriteUrl,
+    toggleReaction,
     updateFavoriteUrl,
-    initializeFromResponse 
+    isFavoriteLoading,
+    initializeFromResponse,
   } = useReactions(currUuid);
 
   // Fetch the current image
@@ -154,10 +155,11 @@ export default function DailyImageScreen() {
       )}
 
       {showRecentImages && hasWeeklyRecap && (
-        <Swiper 
-          images={recentImages} 
-          onClose={toggleRecentImages} 
-          currentFavorite={favoriteUrl}
+        <Swiper
+          images={recentImages}
+          onClose={toggleRecentImages}
+          currentFavoriteUrl={favoriteUrl}
+          isFavoriteLoading={isFavoriteLoading}
           onFavoriteChange={(newFavorite) => {
             // Directly update the favorite URL in the parent component
             // This ensures the state is updated immediately without waiting for a reload

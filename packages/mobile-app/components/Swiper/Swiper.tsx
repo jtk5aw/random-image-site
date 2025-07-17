@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -8,13 +8,16 @@ import {
   TouchableOpacity,
   FlatList,
   Modal,
-  Pressable,
   BackHandler,
+  ActivityIndicator,
 } from "react-native";
 import { format } from "date-fns";
-import axios from "axios";
-import { SET_FAVORITE_ENDPOINT } from "@/config/api";
 import { getUuid } from "@/utils/storage";
+import {
+  GestureHandlerRootView,
+  TapGestureHandler,
+  State,
+} from "react-native-gesture-handler";
 
 interface SwiperProps {
   images: Array<{
@@ -22,7 +25,8 @@ interface SwiperProps {
     date: string;
   }>;
   onClose: () => void;
-  currentFavorite?: string;
+  currentFavoriteUrl?: string;
+  isFavoriteLoading?: boolean;
   onFavoriteChange?: (newFavorite: string) => void;
 }
 
@@ -31,15 +35,19 @@ const { width, height } = Dimensions.get("window");
 export default function Swiper({
   images,
   onClose,
-  currentFavorite = "",
+  currentFavoriteUrl = "",
+  isFavoriteLoading = false,
   onFavoriteChange,
 }: SwiperProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [uuid, setUuid] = useState<string | null>(null);
-  const [favoriteUrl, setFavoriteUrl] = useState(currentFavorite);
   const [isClosing, setIsClosing] = useState(false);
   const [modalVisible, setModalVisible] = useState(true);
-  const flatListRef = React.useRef<FlatList>(null);
+  const [showFavoriteToast, setShowFavoriteToast] = useState(false);
+
+  const flatListRef = useRef<FlatList>(null);
+  const doubleTapRef = useRef(null);
+  const singleTapRef = useRef(null);
 
   // Create a controlled close function
   const handleClose = () => {
@@ -75,38 +83,11 @@ export default function Swiper({
     };
     loadUuid();
   }, []);
-  
-  // Update favoriteUrl when currentFavorite prop changes
-  useEffect(() => {
-    setFavoriteUrl(currentFavorite);
-  }, [currentFavorite]);
-
-  const goToNext = () => {
-    if (currentIndex < images.length - 1) {
-      const nextIndex = currentIndex + 1;
-      flatListRef.current?.scrollToIndex({
-        index: nextIndex,
-        animated: true,
-      });
-      setCurrentIndex(nextIndex);
-    }
-  };
-
-  const goToPrevious = () => {
-    if (currentIndex > 0) {
-      const prevIndex = currentIndex - 1;
-      flatListRef.current?.scrollToIndex({
-        index: prevIndex,
-        animated: true,
-      });
-      setCurrentIndex(prevIndex);
-    }
-  };
 
   const handleScroll = (event: any) => {
     // Don't update the index if we're in the process of closing
     if (isClosing) return;
-    
+
     const contentOffsetX = event.nativeEvent.contentOffset.x;
     const newIndex = Math.round(contentOffsetX / width);
     if (
@@ -130,46 +111,58 @@ export default function Swiper({
   const toggleFavorite = async () => {
     if (!uuid) return;
 
-    const currentImage = images[currentIndex];
+    const newImage = images[currentIndex];
     const newFavoriteUrl =
-      currentImage.url === favoriteUrl ? "" : currentImage.url;
+      newImage.url === currentFavoriteUrl ? "" : newImage.url;
 
-    console.log('Toggling favorite:', {
-      currentImageUrl: currentImage.url,
-      oldFavoriteUrl: favoriteUrl,
+    console.log("Toggling favorite:", {
+      newImageUrl: newImage.url,
+      oldFavoriteUrl: currentFavoriteUrl,
       newFavoriteUrl,
-      action: currentImage.url === favoriteUrl ? 'removing' : 'setting'
+      action: newImage.url === currentFavoriteUrl ? "removing" : "setting",
     });
 
-    // Optimistically update UI
-    setFavoriteUrl(newFavoriteUrl);
-    
-    // Always call onFavoriteChange to update parent state
+    // Call parent components update function
     if (onFavoriteChange) {
-      console.log('Calling onFavoriteChange with:', newFavoriteUrl);
       onFavoriteChange(newFavoriteUrl);
     }
+  };
 
-    try {
-      // Make API call to update favorite
-      console.log('Sending API request to update favorite');
-      await axios.put(SET_FAVORITE_ENDPOINT, {
-        favorite_image: newFavoriteUrl,
-        uuid,
-      });
-      
-      console.log('API request successful, closing slider');
-      // Close the slider after setting favorite
+  // Handle single tap (close the modal)
+  const onSingleTap = (event: any) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
       handleClose();
-    } catch (error) {
-      console.error("Error setting favorite:", error);
-      // Revert on error
-      setFavoriteUrl(favoriteUrl);
-      if (onFavoriteChange) {
-        onFavoriteChange(favoriteUrl);
-      }
     }
   };
+
+  // Handle double tap (set as favorite)
+  const onDoubleTap = (event: any) => {
+    if (event.nativeEvent.state === State.ACTIVE && !isFavoriteLoading) {
+      // Show a brief visual feedback for double tap
+      setShowFavoriteToast(true);
+      setTimeout(() => {
+        setShowFavoriteToast(false);
+      }, 2000);
+
+      toggleFavorite();
+    }
+  };
+
+  const currentImage = images[currentIndex];
+  // Calculate isFavorite based on current image and favoriteUrl
+  const [isFavorite, setIsFavorite] = useState(
+    currentImage?.url === currentFavoriteUrl,
+  );
+
+  // Update isFavorite only when currentIndex changes
+  useEffect(() => {
+    if (images.length > 0) {
+      // Only check if the current image is the favorite, don't set a new favorite
+      const isCurrentImageFavorite =
+        images[currentIndex].url === currentFavoriteUrl;
+      setIsFavorite(isCurrentImageFavorite);
+    }
+  }, [currentIndex, currentFavoriteUrl, images]);
 
   if (images.length === 0) {
     return (
@@ -179,42 +172,27 @@ export default function Swiper({
         visible={modalVisible}
         onRequestClose={handleClose}
       >
-        <View style={styles.container}>
-          <Text style={styles.noImagesText}>No recent images available</Text>
-          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
-        </View>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <View style={styles.container}>
+            <Text style={styles.noImagesText}>No recent images available</Text>
+            <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </GestureHandlerRootView>
       </Modal>
     );
   }
 
   const renderItem = ({ item }: { item: { url: string; date: string } }) => (
-    <Pressable style={styles.slide} onPress={handleClose}>
+    <View style={styles.slide}>
       <Image
         source={{ uri: item.url }}
         style={styles.image}
         resizeMode="contain"
       />
-    </Pressable>
+    </View>
   );
-
-  const currentImage = images[currentIndex];
-  // Calculate isFavorite based on current image and favoriteUrl
-  const [isFavorite, setIsFavorite] = useState(currentImage.url === favoriteUrl);
-  
-  // Update isFavorite when currentIndex or favoriteUrl changes
-  useEffect(() => {
-    if (images.length > 0) {
-      const newIsFavorite = images[currentIndex].url === favoriteUrl;
-      setIsFavorite(newIsFavorite);
-      console.log('Favorite status updated:', {
-        currentImageUrl: images[currentIndex].url,
-        favoriteUrl,
-        isFavorite: newIsFavorite
-      });
-    }
-  }, [currentIndex, favoriteUrl, images]);
 
   return (
     <Modal
@@ -223,54 +201,82 @@ export default function Swiper({
       visible={modalVisible}
       onRequestClose={handleClose}
     >
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.dateText}>{formatDate(currentImage.date)}</Text>
-          <Text style={styles.counterText}>
-            {currentIndex + 1} / {images.length}
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.closeIcon}
-          onPress={handleClose}
-          hitSlop={{ top: 20, right: 20, bottom: 20, left: 20 }}
-        >
-          <Text style={styles.closeIconText}>✕</Text>
-        </TouchableOpacity>
-
-        <FlatList
-          ref={flatListRef}
-          data={images}
-          renderItem={renderItem}
-          keyExtractor={(item, index) => index.toString()}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={handleScroll}
-          initialScrollIndex={0}
-          scrollEnabled={!isClosing}
-          getItemLayout={(_, index) => ({
-            length: width,
-            offset: width * index,
-            index,
-          })}
-        />
-
-        <View style={styles.navigation}>
-          <TouchableOpacity
-            style={[
-              styles.favoriteButton,
-              isFavorite && styles.favoriteButtonActive,
-            ]}
-            onPress={toggleFavorite}
-          >
-            <Text style={styles.favoriteButtonText}>
-              {isFavorite ? "★ Favorite" : "☆ Set as Favorite"}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <Text style={styles.counterText}>
+              {currentIndex + 1} / {images.length}
             </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.closeIcon}
+            onPress={handleClose}
+            hitSlop={{ top: 20, right: 20, bottom: 20, left: 20 }}
+          >
+            <Text style={styles.closeIconText}>✕</Text>
           </TouchableOpacity>
+
+          <TapGestureHandler
+            ref={singleTapRef}
+            onHandlerStateChange={onSingleTap}
+            waitFor={doubleTapRef}
+          >
+            <View style={styles.gestureContainer}>
+              <TapGestureHandler
+                ref={doubleTapRef}
+                onHandlerStateChange={onDoubleTap}
+                numberOfTaps={2}
+              >
+                <View style={styles.gestureContainer}>
+                  <FlatList
+                    ref={flatListRef}
+                    data={images}
+                    renderItem={renderItem}
+                    keyExtractor={(item, index) => index.toString()}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    onMomentumScrollEnd={handleScroll}
+                    initialScrollIndex={0}
+                    scrollEnabled={!isClosing}
+                    getItemLayout={(_, index) => ({
+                      length: width,
+                      offset: width * index,
+                      index,
+                    })}
+                  />
+                </View>
+              </TapGestureHandler>
+            </View>
+          </TapGestureHandler>
+
+          <View style={styles.navigation}>
+            <TouchableOpacity
+              style={[
+                styles.favoriteButton,
+                isFavorite && styles.favoriteButtonActive,
+                isFavoriteLoading && styles.favoriteButtonLoading,
+              ]}
+              onPress={toggleFavorite}
+              disabled={isFavoriteLoading}
+            >
+              {isFavoriteLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text style={[styles.favoriteButtonText, styles.loadingText]}>
+                    {isFavorite ? "Updating..." : "Undoing..."}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.favoriteButtonText}>
+                  {isFavorite ? "★ Favorite" : "☆ Set as Favorite"}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -282,13 +288,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  gestureContainer: {
+    flex: 1,
+    width: width,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   header: {
     position: "absolute",
     top: 60,
     left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
     zIndex: 1001,
   },
@@ -300,6 +309,7 @@ const styles = StyleSheet.create({
   counterText: {
     color: "white",
     fontSize: 16,
+    fontWeight: "600",
   },
   closeIcon: {
     position: "absolute",
@@ -320,9 +330,10 @@ const styles = StyleSheet.create({
   },
   slide: {
     width,
-    height: height * 0.6,
+    height: height * 0.7, // Increased height for better vertical centering
     justifyContent: "center",
     alignItems: "center",
+    marginTop: 20, // Add some margin to push it down slightly
   },
   image: {
     width: width * 0.9,
@@ -362,9 +373,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 215, 0, 0.7)",
   },
+  favoriteButtonLoading: {
+    opacity: 0.7,
+  },
   favoriteButtonText: {
     color: "white",
     fontWeight: "600",
+  },
+  loadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    marginLeft: 8,
+  },
+  favoriteToast: {
+    position: "absolute",
+    padding: 10,
+    backgroundColor: "rgba(255, 215, 0, 0.7)",
+    borderRadius: 20,
+    alignSelf: "center",
+    top: height / 2 - 50,
+    opacity: 0.9,
+  },
+  favoriteToastText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
   },
   closeButton: {
     paddingVertical: 10,
