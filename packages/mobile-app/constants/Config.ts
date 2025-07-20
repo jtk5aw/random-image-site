@@ -9,6 +9,9 @@ export const getApiEndpoint = (): string => {
   return apiEndpoint;
 };
 
+// TODO TODO TODO: I think the app is good to publish at this point, just
+// need to figure out how
+
 export const showAdminPanel = (): boolean => {
   console.log(process.env.EXPO_PUBLIC_SHOW_ADMIN);
   const toReturn = process.env.EXPO_PUBLIC_SHOW_ADMIN === "true";

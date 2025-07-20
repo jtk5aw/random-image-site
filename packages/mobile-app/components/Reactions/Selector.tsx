@@ -1,7 +1,7 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import SelectorEmoji from './SelectorEmoji';
-import { ReactionType, REACTIONS } from '@/constants/reactions';
+import React from "react";
+import { View, StyleSheet } from "react-native";
+import SelectorEmoji from "./SelectorEmoji";
+import { ReactionType, REACTIONS } from "@/constants/reactions";
 
 interface SelectorProps {
   reactions?: ReactionType[];
@@ -10,11 +10,11 @@ interface SelectorProps {
   counts?: { [key: string]: number } | null;
 }
 
-export default function Selector({ 
-  reactions = Object.keys(REACTIONS) as ReactionType[], 
-  currReaction, 
+export default function Selector({
+  reactions = Object.keys(REACTIONS) as ReactionType[],
+  currReaction,
   onSelect,
-  counts = null
+  counts = null,
 }: SelectorProps) {
   return (
     <View style={styles.container}>
@@ -33,10 +33,10 @@ export default function Selector({
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     paddingVertical: 20,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
 });

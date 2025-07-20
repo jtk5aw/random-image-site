@@ -1,3 +1,4 @@
+import { randomUUID } from "expo-crypto";
 import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
@@ -16,11 +17,6 @@ import DailyImage from "@/components/DailyImage/Image";
 import Selector from "@/components/Reactions/Selector";
 import Swiper from "@/components/Swiper/Swiper";
 import { useReactions } from "@/hooks/useReactions";
-
-interface RecentImage {
-  url: string;
-  date: string;
-}
 
 export default function DailyImageScreen() {
   const [currUuid, setCurrUuid] = useState<string | null>(null);
@@ -59,6 +55,7 @@ export default function DailyImageScreen() {
           },
         })
         .then((res) => {
+          console.log("made request for metadata?");
           return res.data;
         }),
   });
@@ -82,6 +79,8 @@ export default function DailyImageScreen() {
       const storedUuid = await getUuid();
       if (storedUuid) {
         setCurrUuid(storedUuid);
+      } else {
+        setUuid(randomUUID());
       }
     };
     loadUuid();
@@ -105,6 +104,7 @@ export default function DailyImageScreen() {
 
   // Handle reaction selection
   const onEmojiClick = (newReaction: ReactionType) => {
+    console.log("My currUuid is", currUuid);
     if (!currUuid) return;
     toggleReaction(newReaction);
   };

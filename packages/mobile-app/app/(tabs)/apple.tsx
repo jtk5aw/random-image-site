@@ -7,6 +7,7 @@ import { AppType } from "../../../mobile-backend";
 import { ClientRequest, ClientResponse, InferResponseType } from "hono/client";
 import { ContentfulStatusCode } from "hono/utils/http-status";
 import { getApiEndpoint, showAdminPanel } from "../../constants/Config";
+import { isTokenExpired, willTokenExpireSoon } from "../../utils/jwt";
 // I don't know why the require is necessary here but it works for now :shrug:
 const { hc } = require("hono/dist/client") as typeof import("hono/client");
 
@@ -147,6 +148,34 @@ async function makeTestCall(
   | { refreshSuccess: true; credentials: Credentials }
   | { refreshSuccess: false }
 > {
+  // Check if access token is expired before making the call
+  if (isTokenExpired(credential) && refreshCredential && !isTokenExpired(refreshCredential)) {
+    console.log("Access token expired, refreshing before test call");
+    try {
+      const result = await client.refresh.$post({
+        header: {
+          refresh_token: refreshCredential,
+        },
+      });
+      const json = await result.json();
+      
+      if (json.success === true) {
+        return { 
+          refreshSuccess: true, 
+          credentials: {
+            accessToken: json.value.accessToken,
+            refreshToken: json.value.refreshToken
+          }
+        };
+      }
+      return { refreshSuccess: false };
+    } catch (e) {
+      console.error("Error refreshing token:", e);
+      return { refreshSuccess: false };
+    }
+  }
+  
+  // If token is not expired or we couldn't refresh, proceed with original logic
   const result = await makeCall(
     client.api.test,
     {
@@ -186,7 +215,7 @@ export default function App() {
     setRefreshCredential(null);
   }
 
-  // Load credentials from SecureStore on component mount
+  // Load credentials from SecureStore on component mount and check expiration
   useEffect(() => {
     async function loadCredential() {
       try {
@@ -194,24 +223,70 @@ export default function App() {
           service: ACCESS_TOKEN_SECURE_STORE_KEY,
           accessGroup: SHARED_KEYCHAIN_GROUP,
         });
-        if (
-          !accessTokenCredential ||
-          accessTokenCredential.username != ACCESS_TOKEN_SECURE_STORE_KEY
-        ) {
-          throw Error("Failed to retrieve access token");
-        }
-        setCredential(accessTokenCredential.password);
+        
         const refreshTokenCredential = await Keychain.getGenericPassword({
           service: REFRESH_TOKEN_SECURE_STORE_KEY,
           accessGroup: SHARED_KEYCHAIN_GROUP,
         });
+        
+        // Check if we have both tokens
         if (
+          !accessTokenCredential ||
+          accessTokenCredential.username != ACCESS_TOKEN_SECURE_STORE_KEY ||
           !refreshTokenCredential ||
           refreshTokenCredential.username != REFRESH_TOKEN_SECURE_STORE_KEY
         ) {
-          throw Error("Failed to retrieve refresh token");
+          // If we don't have valid credentials, clear everything to be safe
+          await clearStorage();
+          throw Error("Failed to retrieve tokens");
         }
-        setRefreshCredential(refreshTokenCredential.password);
+        
+        const accessToken = accessTokenCredential.password;
+        const refreshToken = refreshTokenCredential.password;
+        
+        // Check if access token is expired
+        if (isTokenExpired(accessToken)) {
+          console.log("Access token is expired, checking refresh token");
+          
+          // Check if refresh token is also expired
+          if (isTokenExpired(refreshToken)) {
+            console.log("Refresh token is also expired, clearing credentials");
+            await clearStorage();
+          } else {
+            console.log("Refresh token is valid, attempting to refresh tokens");
+            // Attempt to refresh the tokens
+            try {
+              const result = await client.refresh.$post({
+                header: {
+                  refresh_token: refreshToken,
+                },
+              });
+              const json = await result.json();
+              
+              if (json.success === false) {
+                console.log("Token refresh failed:", json.message);
+                await clearStorage();
+              } else {
+                console.log("Token refresh successful");
+                // Store the new tokens
+                await storeCreds(json.value.accessToken, json.value.refreshToken);
+              }
+            } catch (refreshError) {
+              console.error("Error refreshing tokens:", refreshError);
+              await clearStorage();
+            }
+          }
+        } else {
+          // Access token is still valid, set it in state
+          setCredential(accessToken);
+          setRefreshCredential(refreshToken);
+          
+          // Optionally, if token will expire soon, refresh it proactively
+          if (willTokenExpireSoon(accessToken, 600)) { // 10 minutes buffer
+            console.log("Access token will expire soon, refreshing proactively");
+            refreshAppleCredentials();
+          }
+        }
       } catch (error) {
         console.error("Failed to load credential:", error);
       } finally {
@@ -245,9 +320,17 @@ export default function App() {
 
   const refreshAppleCredentials = async () => {
     if (!refreshCredential) {
-      console.log("FAILURE");
-      return;
+      console.log("Cannot refresh: No refresh token available");
+      return false;
     }
+    
+    // Check if refresh token is expired
+    if (isTokenExpired(refreshCredential)) {
+      console.log("Refresh token is expired, cannot refresh");
+      await clearStorage();
+      return false;
+    }
+    
     try {
       const result = await client.refresh.$post({
         header: {
@@ -255,15 +338,20 @@ export default function App() {
         },
       });
       const json = await result.json();
-      if (json.success == false) {
-        console.log("FAILURE");
-        console.log(json);
-        return;
+      
+      if (json.success === false) {
+        console.log("Token refresh failed:", json.message);
+        await clearStorage();
+        return false;
       }
-      storeCreds(json.value.accessToken, json.value.refreshToken);
+      
+      console.log("Token refresh successful");
+      await storeCreds(json.value.accessToken, json.value.refreshToken);
+      return true;
     } catch (e) {
-      console.log("FAILURE");
-      console.log(e);
+      console.error("Error during token refresh:", e);
+      await clearStorage();
+      return false;
     }
   };
 
@@ -364,6 +452,7 @@ export default function App() {
   return (
     <View style={styles.container}>
       {credential ? (
+        // TODO TODO TODO: This might be bad practice? I can't tell
         showAdminPanel() ? (
           <View>
             <Button
