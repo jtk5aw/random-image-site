@@ -223,8 +223,8 @@ async function mobileApi(
     transform: {
       table: {
         billingMode: "PROVISIONED",
-        readCapacity: $app.stage === "production" ? 15 : 5,
-        writeCapacity: $app.stage === "production" ? 15 : 5,
+        readCapacity: $app.stage === "production" ? 10 : 3,
+        writeCapacity: $app.stage === "production" ? 10 : 3,
       },
     },
   });
@@ -295,8 +295,8 @@ async function createImageTable(): Promise<{ imageTable: sst.aws.Dynamo }> {
     transform: {
       table: {
         billingMode: "PROVISIONED",
-        readCapacity: $app.stage === "production" ? 15 : 5,
-        writeCapacity: $app.stage === "production" ? 15 : 5,
+        readCapacity: $app.stage === "production" ? 10 : 3,
+        writeCapacity: $app.stage === "production" ? 10 : 3,
       },
     },
   });
