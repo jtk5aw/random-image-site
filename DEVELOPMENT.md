@@ -61,6 +61,21 @@ The share sheet just won't work as well on a simulator and isn't worth testing o
 6.
 Once you have that, just press the "play" button over on the right
 
+To publish the app: 
+
+1.
+`NODE_ENV=production eas build --platform ios --profile production` (I think the env variables will work but need to test first)
+
+2.
+`eas submit --platform ios`
+
+3.
+Fill out tons of info on the apple developer site when it asks.
+
+
+4.
+Then submit on that site and wait (I haven't made it past this point yet) 
+
 
 ### Api endpoints
 
